@@ -10,13 +10,38 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Garage WOD Tracker
 
-A personal training log. Production port is **3006**; the shared-host port
-table lives in `deploy/README.md` and is the one place it is recorded.
+A multi-user training log for a garage gym. Production port is **3006**; the
+shared-host port table lives in `deploy/README.md` and is the one place it is
+recorded.
 
-- Domain logic goes in `src/lib/` and stays free of React so `test/` can run it
-  under `node`.
+## Voice
+
+Screen copy is deliberately terse and direct — ownership, no excuses, no
+cheerleading. "Log it", not "Save result". Keep new copy in that register, but
+never at the cost of clarity: **error messages stay plain and specific**, because
+someone is reading them mid-session with chalk on their hands.
+
+## Rules that are easy to break
+
+- **A score is meaningless without its format.** `parseScore` takes the format;
+  never infer it from the text. The format also owns sort direction
+  (`compareScores`), so leaderboard ranking cannot happen in SQL.
+- **Loads are whole grams, durations are seconds.** Kilograms and pounds are
+  renderings. Convert at the boundary — form input and AI import — and nowhere
+  else.
+- **The equipment list is a hard constraint on generation.** Only
+  `availableEquipment()` reaches the prompt: listing a broken rower is the same
+  as programming one.
+- **Domain logic lives in `src/lib/` and stays free of React**, so `test/` can
+  run it under `node` against a real SQLite file.
+- **Never edit a shipped migration** — append a new entry to `MIGRATIONS`.
 - The database is `node:sqlite`, listed in `serverExternalPackages`. It lives
-  under `DATA_DIR`, and nothing is written outside it — the systemd unit mounts
+  under `DATA_DIR`, and nothing is written outside it; the systemd unit mounts
   everything else read-only.
 - `output: "standalone"` is what the systemd unit runs. Deploys must copy
-  `.next/static` by hand; Next does not put it in the standalone output.
+  `.next/static` by hand — Next does not put it in the standalone output.
+
+## Secrets
+
+`ANTHROPIC_API_KEY` and `SETUP_TOKEN` are read from the environment and belong
+in a systemd drop-in, never in the shipped unit or the repo.

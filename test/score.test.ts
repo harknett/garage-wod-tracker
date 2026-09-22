@@ -1,50 +1,77 @@
 import { describe, expect, it } from "vitest";
 
-import { ScoreParseError, formatScore, parseScore } from "@/lib/score";
+import { compareScores } from "@/lib/workout/formats";
+import { ScoreParseError, formatScore, parseScore } from "@/lib/workout/score";
 
 describe("parseScore", () => {
-  it("reads minutes and seconds", () => {
-    expect(parseScore("12:34", "time")).toEqual({ kind: "time", seconds: 754 });
+  it("reads a for-time score as a clock", () => {
+    expect(parseScore("12:34", "for_time").value).toBe(754);
   });
 
-  it("reads a bare number as seconds for a timed event", () => {
-    expect(parseScore("45", "time")).toEqual({ kind: "time", seconds: 45 });
-  });
-
-  it("reads the same bare number as rounds for an AMRAP", () => {
-    expect(parseScore("45", "rounds")).toEqual({ kind: "rounds", rounds: 45, reps: 0 });
+  it("reads the same bare number differently per format", () => {
+    // Nothing in the text distinguishes these; only the format does.
+    expect(parseScore("45", "for_time").value).toBe(45);
+    expect(parseScore("45", "amrap")).toMatchObject({ rounds: 45, reps: 0 });
   });
 
   it("reads rounds plus a part round", () => {
-    expect(parseScore("7+12", "rounds")).toEqual({ kind: "rounds", rounds: 7, reps: 12 });
+    expect(parseScore("7+12", "amrap")).toMatchObject({ rounds: 7, reps: 12 });
   });
 
-  it("truncates tenths rather than rounding up past the clock", () => {
-    expect(parseScore("9:07.9", "time")).toEqual({ kind: "time", seconds: 547.9 });
-    expect(formatScore(parseScore("9:07.9", "time"))).toBe("9:07.9");
+  it("reads a load in the athlete's unit", () => {
+    expect(parseScore("100", "strength", "kg").value).toBe(100_000);
+    expect(parseScore("225", "strength", "lb").value).toBe(102_058);
   });
 
-  it("rejects a minutes-only clock with sixty-plus seconds", () => {
-    expect(() => parseScore("12:74", "time")).toThrow(ScoreParseError);
+  it("ignores the unit for scores that are not loads", () => {
+    expect(parseScore("12:34", "for_time", "lb").value).toBe(
+      parseScore("12:34", "for_time", "kg").value,
+    );
+  });
+
+  it("reports a bad load as a score problem, not a unit problem", () => {
+    expect(() => parseScore("heavy", "strength")).toThrow(ScoreParseError);
   });
 
   it("rejects blank input", () => {
-    expect(() => parseScore("   ", "time")).toThrow(ScoreParseError);
+    expect(() => parseScore("   ", "amrap")).toThrow(ScoreParseError);
   });
 });
 
 describe("formatScore", () => {
-  it("pads seconds", () => {
-    expect(formatScore({ kind: "time", seconds: 547 })).toBe("9:07");
-  });
-
-  it("drops a zero part round", () => {
-    expect(formatScore({ kind: "rounds", rounds: 7, reps: 0 })).toBe("7");
-  });
-
-  it("round-trips a whiteboard score", () => {
-    for (const text of ["12:34", "0:45", "9:07.5"]) {
-      expect(formatScore(parseScore(text, "time"))).toBe(text);
+  it("round-trips each format's own notation", () => {
+    const cases = [
+      ["12:34", "for_time"],
+      ["7+12", "amrap"],
+      ["9", "emom"],
+      ["84 reps", "tabata"],
+    ] as const;
+    for (const [text, format] of cases) {
+      const typed = text.replace(" reps", "");
+      expect(formatScore(parseScore(typed, format), "kg")).toBe(text);
     }
+  });
+
+  it("renders a load back in the unit asked for", () => {
+    const score = parseScore("100", "strength", "kg");
+    expect(formatScore(score, "kg")).toBe("100 kg");
+    expect(formatScore(score, "lb")).toBe("220.5 lb");
+  });
+});
+
+describe("compareScores", () => {
+  it("puts the fastest first when lower is better", () => {
+    expect([754, 600, 900].sort((a, b) => compareScores("for_time", a, b))).toEqual([
+      600, 754, 900,
+    ]);
+  });
+
+  it("puts the most rounds first when higher is better", () => {
+    expect([7, 12, 9].sort((a, b) => compareScores("amrap", a, b))).toEqual([12, 9, 7]);
+  });
+
+  it("sorts a missing score last in both directions", () => {
+    expect([null, 600].sort((a, b) => compareScores("for_time", a, b))).toEqual([600, null]);
+    expect([null, 600].sort((a, b) => compareScores("amrap", a, b))).toEqual([600, null]);
   });
 });

@@ -1,10 +1,41 @@
 @import "tailwindcss";
 
+/*
+  Built for a phone held in a chalky hand between rounds, and for a laptop on
+  the kitchen table when the week is written. The phone is the harder case, so
+  it is the default: big tap targets, high contrast, nothing that needs a
+  steady finger.
+*/
 @theme {
-  --color-chalk: #f5f3ef;
-  --color-iron: #1c1b1a;
+  --color-chalk: #f6f5f2;
+  --color-iron: #17181a;
+  --color-slate: #2a2d31;
+  --color-rust: #c2410c;
+  --color-lime: #4d7c0f;
 }
 
-html {
+:root {
   color-scheme: light dark;
+}
+
+/*
+  A phone keyboard zooms the page in when it focuses an input whose text is
+  under 16px, and never zooms back out. Every control in this app is typed into
+  mid-workout, so the floor is enforced here rather than per-field.
+*/
+input,
+select,
+textarea,
+button {
+  font-size: max(1rem, 16px);
+}
+
+/* Respect a reduced-motion preference rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

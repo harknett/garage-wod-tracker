@@ -1,6 +1,22 @@
 # Garage WOD Tracker
 
-A training log for the garage gym. Next.js, SQLite, no account anywhere else.
+Write the week. Train it. Log it. Live with the record.
+
+A multi-user training log for a garage gym: the coach writes the programming on
+a laptop — by hand or with Claude — and everyone does it and logs it from their
+phone. Next.js, SQLite, no account anywhere else.
+
+## What it does
+
+| | |
+| --- | --- |
+| **Programming** | Every common format — for time, AMRAP, EMOM, death by, sets and reps, tabata, chipper, ladder, intervals, strength, skill — each with its own scoring rule. |
+| **AI weeks** | Claude writes a cohesive week against the athlete's last eight weeks of logged results, their RPE and notes, and the gym's equipment list. |
+| **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
+| **Logging** | A score per workout plus per-movement reps, load, time and distance. Built for a phone, mid-session, with one hand. |
+| **Units** | Loads in kilograms or pounds, per athlete. Both are stored as grams, so two people logging the same barbell land on the same number. |
+| **Leaderboard** | Any workout two or more athletes have done, ranked in the direction that format actually runs. |
+| **Progress** | Sessions per week, RPE trend, format mix, and the heaviest load recorded per movement. |
 
 ## Running it
 
@@ -9,8 +25,20 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+The first visit lands on `/setup`, which needs `SETUP_TOKEN` set:
+
+```bash
+SETUP_TOKEN=dev npm run dev
+```
+
+That creates the owner account. Everyone else is added from **Athletes** and
+gets a one-time password shown once on screen.
+
+To try week generation locally, set `ANTHROPIC_API_KEY` too. Without it the
+whole app works and the Build screen says generation is off.
+
 In production it listens on **3006** — see [`deploy/README.md`](deploy/README.md)
-for the port table it shares with the other services on the host.
+for the shared-host port table, the systemd unit, TLS, upgrades and backups.
 
 ## Commands
 
@@ -27,16 +55,24 @@ for the port table it shares with the other services on the host.
 
 | Path | Holds |
 | --- | --- |
-| `src/app/` | Routes and layouts. |
-| `src/lib/` | Domain logic, no React. `score.ts` parses and formats whiteboard scores. |
-| `test/` | Vitest specs, `*.test.ts`, run in `node`. |
-| `deploy/` | systemd unit and deployment notes. |
+| `src/app/(auth)/` | Sign in, first-owner setup, change password. |
+| `src/app/(app)/` | Everything behind the session: today, week, log, build, equipment, leaderboard, progress, athletes, settings. |
+| `src/lib/workout/` | Formats and scoring — the rules that decide what a result means. |
+| `src/lib/units.ts` | Grams and seconds in, kilograms, pounds and clocks out. |
+| `src/lib/db/` | Schema migrations and every query, in one `Store`. |
+| `src/lib/ai/` | The prompt, the output schema, and the importer that turns a generated week into rows. |
+| `src/lib/auth/` | Sessions, scrypt passwords, sign-in throttling. |
+| `test/` | Vitest specs, `*.test.ts`, run in `node` against real SQLite files. |
+| `deploy/` | systemd unit and the deployment, upgrade and backup guide. |
 | `data/` | The SQLite database. Gitignored, never in a build. |
 
-## Scores
+## Two things worth knowing
 
-A score is either a time or a count of rounds, and the two notations overlap at
-a bare integer: `45` is 45 seconds for a timed workout and 45 rounds for an
-AMRAP. `parseScore` therefore takes the event's kind rather than guessing from
-the text, which is the difference between a 45-second sprint and an
-impossible day.
+**A score means nothing without its format.** `45` is forty-five seconds in a
+for-time and forty-five rounds in an EMOM, and nothing in the text tells them
+apart. So `parseScore` takes the format rather than guessing, and the format
+also decides which direction the leaderboard sorts.
+
+**Loads are stored as whole grams.** Kilograms and pounds are both renderings
+of that one number. A float would sort fine and group badly — `60.000000000000004`
+becomes its own row on a leaderboard.
