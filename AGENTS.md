@@ -41,6 +41,15 @@ someone is reading them mid-session with chalk on their hands.
 - **The equipment list is a hard constraint on generation.** Only
   `availableEquipment()` reaches the prompt: listing a broken rower is the same
   as programming one.
+- **The CSP lives in `src/proxy.ts`, not `next.config.ts`.** It needs a fresh
+  nonce per request, because Next streams page data in inline `<script>` tags.
+  A static `script-src 'self'` blocks every one of them: pages still render and
+  the server logs nothing, but React never hydrates (minified error #412) and
+  everything interactive silently stops working.
+- **A page that reads `process.env` or the database must be `force-dynamic`.**
+  Otherwise it is prerendered and the value is baked in at build time — which
+  is what made `/setup` insist `SETUP_TOKEN` was unset no matter what the
+  server had.
 - **Domain logic lives in `src/lib/` and stays free of React**, so `test/` can
   run it under `node` against a real SQLite file.
 - **Never edit a shipped migration** — append a new entry to `MIGRATIONS`.

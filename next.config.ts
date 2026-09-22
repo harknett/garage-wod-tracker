@@ -3,24 +3,11 @@ import type { NextConfig } from "next";
 /**
  * Response headers.
  *
- * The tracker is a personal log meant to sit behind a reverse proxy, but
- * "only I use it" describes today's habits, not a property of the code.
- * Scripts get `'self'` only; `'unsafe-inline'` for styles is Next's inlined
- * critical CSS.
+ * The Content-Security-Policy is deliberately NOT here: it needs a fresh
+ * nonce per request so Next's inline scripts can run, which only middleware
+ * can do. See `src/proxy.ts`. Everything below is the same on every response,
+ * so it stays where it is cheapest.
  */
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "object-src 'none'",
-].join("; ");
-
 const nextConfig: NextConfig = {
   serverExternalPackages: ["node:sqlite"],
 
@@ -51,7 +38,6 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: CSP },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },

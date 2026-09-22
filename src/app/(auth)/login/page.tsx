@@ -7,6 +7,9 @@ import { LoginForm } from "./form";
 
 export const metadata = { title: "Sign in - Garage WOD Tracker" };
 
+// Reads the session cookie and the account count, both per request.
+export const dynamic = "force-dynamic";
+
 export default async function LoginPage() {
   if (await currentUser()) redirect("/");
   // A deployment with no accounts yet should send its first visitor to setup
