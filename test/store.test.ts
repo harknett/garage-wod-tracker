@@ -52,6 +52,37 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Build a database at an older schema version, then open it normally so the
+ * outstanding migrations run against real rows. `upTo` is how many migrations
+ * to apply by hand before handing over.
+ */
+function withLegacyDb(
+  upTo: number,
+  seed: (raw: DatabaseSync) => void,
+  check: (migrated: Store) => void,
+): void {
+  const legacyDir = mkdtempSync(join(tmpdir(), "gwt-legacy-"));
+  const file = join(legacyDir, "legacy.db");
+  try {
+    const raw = new DatabaseSync(file);
+    raw.exec("PRAGMA foreign_keys = ON");
+    for (let i = 0; i < upTo; i++) raw.exec(MIGRATIONS[i]!);
+    raw.exec(`PRAGMA user_version = ${upTo}`);
+    seed(raw);
+    raw.close();
+
+    const migrated = new Store(file);
+    try {
+      check(migrated);
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    rmSync(legacyDir, { recursive: true, force: true });
+  }
+}
+
 describe("schema", () => {
   it("migrates a blank file into a usable database", () => {
     expect(store.countUsers()).toBe(0);
@@ -325,26 +356,54 @@ describe("training phase", () => {
   it("migrates an existing database, defaulting athletes to ramping", () => {
     // Migration 1 adds the column to a schema that already has rows. Proven by
     // stepping a database through migration 0 only, then opening it normally.
-    const legacyDir = mkdtempSync(join(tmpdir(), "gwt-legacy-"));
-    const file = join(legacyDir, "legacy.db");
-    try {
-      const raw = new DatabaseSync(file);
-      raw.exec(MIGRATIONS[0]!);
-      raw.exec("PRAGMA user_version = 1");
+    withLegacyDb(1, (raw) => {
       raw
         .prepare(
           `INSERT INTO users (email, name, password_hash, role, unit)
            VALUES ('old@example.com', 'Old Hand', 'x', 'member', 'kg')`,
         )
         .run();
-      raw.close();
-
-      const migrated = new Store(file);
+    }, (migrated) => {
       expect(migrated.findUserByEmail("old@example.com")!.phase).toBe("ramping");
-      migrated.close();
-    } finally {
-      rmSync(legacyDir, { recursive: true, force: true });
-    }
+    });
+  });
+
+  it("widens the phase constraint without disturbing anything that points at it", () => {
+    // Migration 2 swaps the phase column to allow a fourth value. Rebuilding
+    // the table instead would have dropped `users` while sessions, assignments
+    // and results held cascading foreign keys into it.
+    withLegacyDb(2, (raw) => {
+      raw
+        .prepare(
+          `INSERT INTO users (email, name, password_hash, role, unit, phase)
+           VALUES ('old@example.com', 'Old Hand', 'x', 'member', 'kg', 'building')`,
+        )
+        .run();
+      raw
+        .prepare(
+          `INSERT INTO sessions (token_hash, user_id, expires_at)
+           VALUES ('abc', 1, datetime('now', '+1 day'))`,
+        )
+        .run();
+    }, (migrated) => {
+      // The value survived the swap, the session that referenced the row is
+      // still there, and the new phase is now accepted.
+      const user = migrated.findUserByEmail("old@example.com")!;
+      expect(user.phase).toBe("building");
+      expect(migrated.findSessionUser("abc")?.email).toBe("old@example.com");
+
+      migrated.setPhase(user.id, "conditioning");
+      expect(migrated.findUser(user.id)!.phase).toBe("conditioning");
+    });
+  });
+
+  it("still refuses a phase that is not in the catalogue", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    expect(() =>
+      // Cast past the type system: the database is the last line of defence
+      // when a bad value arrives from somewhere TypeScript cannot see.
+      store.setPhase(user.id, "bulking" as unknown as Parameters<Store["setPhase"]>[1]),
+    ).toThrow(/CHECK constraint failed/);
   });
 });
 

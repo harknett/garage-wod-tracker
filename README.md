@@ -11,7 +11,7 @@ phone. Next.js, SQLite, no account anywhere else.
 | | |
 | --- | --- |
 | **Programming** | Every common format — for time, AMRAP, EMOM, death by, sets and reps, tabata, chipper, ladder, intervals, strength, skill — each with its own scoring rule. |
-| **Training phases** | Every athlete is *ramping*, *leaning* or *building*. The phase is the frame the whole week is written inside, and each session is stamped with the phase it was written under. |
+| **Training phases** | Every athlete is *ramping*, *conditioning*, *leaning* or *building*. The phase is the frame the whole week is written inside, and each session is stamped with the phase it was written under. |
 | **AI weeks** | Claude writes a cohesive week against the athlete's phase, their last eight weeks of logged results, their RPE and notes, and the gym's equipment list. |
 | **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
 | **Logging** | A score per workout plus per-movement reps, load, time and distance. Built for a phone, mid-session, with one hand. |
@@ -72,6 +72,7 @@ for the shared-host port table, the systemd unit, TLS, upgrades and backups.
 | Phase | Means |
 | --- | --- |
 | **Ramping** | Coming back from sedentary, illness or injury. Volume climbs before load; nothing to failure; sessions end with something left. |
+| **Mobility & conditioning** | Daily maintenance and balance, with no composition or strength target in play. Every movement pattern covered, mobility programmed as real work, and a week repeatable indefinitely. Where a healthy athlete lives between blocks. |
 | **Leaning** | Dropping fat while holding muscle. Density and conditioning, but enough heavy work that strength survives the deficit. |
 | **Building** | Adding strength and muscle. Heavy compounds first, full rest, visible week-on-week progression; conditioning supports it rather than competing. |
 

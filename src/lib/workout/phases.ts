@@ -12,7 +12,7 @@
  * so they cannot drift apart.
  */
 
-export const PHASES = ["ramping", "leaning", "building"] as const;
+export const PHASES = ["ramping", "conditioning", "leaning", "building"] as const;
 export type Phase = (typeof PHASES)[number];
 
 export interface PhaseSpec {
@@ -35,6 +35,22 @@ export const PHASE_SPECS: Record<Phase, PhaseSpec> = {
       "Volume climbs before load does. Sessions should end with the athlete",
       "feeling they could have done more — that is the point, not a shortfall.",
       "Target RPE 5-7. If the history shows pain or a missed week, back off further.",
+    ].join(" "),
+  },
+  conditioning: {
+    label: "Mobility & conditioning",
+    summary: "Maintenance. Stay balanced, stay mobile, keep the engine.",
+    brief: [
+      "CONDITIONING — general maintenance and balance, with no body-composition",
+      "or strength target in play. This is where a healthy athlete lives between",
+      "blocks, and it is a destination, not a holding pattern.",
+      "Balance the week across push, pull, hinge, squat, carry and a genuine",
+      "aerobic base — no pattern neglected two weeks running. Mobility is",
+      "programmed work here rather than a warm-up afterthought: give it real time",
+      "in every session, and aim it at the positions their history shows they",
+      "avoid. Nothing should be hard enough to need a recovery day; the week",
+      "should be repeatable indefinitely. Target RPE 5-7, with one harder piece",
+      "if they want it.",
     ].join(" "),
   },
   leaning: {

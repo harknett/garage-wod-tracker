@@ -156,4 +156,23 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workouts ADD COLUMN phase TEXT
     CHECK (phase IS NULL OR phase IN ('ramping','leaning','building'));
   `,
+
+  // A fourth phase. Widening a CHECK constraint is not something SQLite can do
+  // in place, and the documented fix - rebuild the table - would mean dropping
+  // `users` and `workouts` while sessions, assignments and results hold foreign
+  // keys into them with cascades armed. Swapping one column at a time avoids
+  // the rebuild completely: no child row is touched and no index is recreated.
+  `
+  ALTER TABLE users ADD COLUMN phase_new TEXT NOT NULL DEFAULT 'ramping'
+    CHECK (phase_new IN ('ramping','conditioning','leaning','building'));
+  UPDATE users SET phase_new = phase;
+  ALTER TABLE users DROP COLUMN phase;
+  ALTER TABLE users RENAME COLUMN phase_new TO phase;
+
+  ALTER TABLE workouts ADD COLUMN phase_new TEXT
+    CHECK (phase_new IS NULL OR phase_new IN ('ramping','conditioning','leaning','building'));
+  UPDATE workouts SET phase_new = phase;
+  ALTER TABLE workouts DROP COLUMN phase;
+  ALTER TABLE workouts RENAME COLUMN phase_new TO phase;
+  `,
 ];
