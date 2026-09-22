@@ -142,4 +142,18 @@ export const MIGRATIONS: string[] = [
   CREATE UNIQUE INDEX idx_movement_result_unique ON movement_results(result_id, movement_id);
   CREATE INDEX idx_movement_results_movement ON movement_results(movement_id);
   `,
+
+  // Training phase. Added after the first release, so it arrives as its own
+  // migration: existing accounts default to 'ramping', which is the
+  // conservative read of an athlete nobody has assessed yet.
+  `
+  ALTER TABLE users ADD COLUMN phase TEXT NOT NULL DEFAULT 'ramping'
+    CHECK (phase IN ('ramping','leaning','building'));
+
+  -- The phase a workout was written under, stamped at creation. Nullable,
+  -- because everything written before this column existed was written under
+  -- no phase at all, and backfilling one would be inventing history.
+  ALTER TABLE workouts ADD COLUMN phase TEXT
+    CHECK (phase IS NULL OR phase IN ('ramping','leaning','building'));
+  `,
 ];

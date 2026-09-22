@@ -1,5 +1,6 @@
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
+import type { Phase } from "@/lib/workout/phases";
 
 export type Role = "owner" | "member";
 export type Source = "manual" | "ai";
@@ -10,6 +11,8 @@ export interface User {
   name: string;
   role: Role;
   unit: Unit;
+  /** Where this athlete is in their training. Steers every generated week. */
+  phase: Phase;
   mustChangePassword: boolean;
   createdAt: string;
 }
@@ -34,6 +37,8 @@ export interface Workout {
   description: string;
   capSeconds: number | null;
   source: Source;
+  /** The phase this was written under. Null for anything predating phases. */
+  phase: Phase | null;
   createdBy: number | null;
   createdAt: string;
 }
@@ -115,6 +120,7 @@ export interface NewWorkout {
   description: string;
   capSeconds: number | null;
   source: Source;
+  phase: Phase | null;
   createdBy: number | null;
   movements: NewMovement[];
 }

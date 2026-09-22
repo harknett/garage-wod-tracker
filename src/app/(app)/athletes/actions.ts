@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/password";
 import { getStore } from "@/lib/db";
 import { isUnit } from "@/lib/units";
+import { PHASE_SPECS, isPhase } from "@/lib/workout/phases";
 
 export interface AthleteState {
   error?: string;
@@ -30,10 +31,12 @@ export async function addAthlete(_prev: AthleteState, data: FormData): Promise<A
   const name = String(data.get("name") ?? "").trim();
   const email = String(data.get("email") ?? "").trim().toLowerCase();
   const unit = String(data.get("unit") ?? "kg");
+  const phase = String(data.get("phase") ?? "ramping");
   const role = data.get("role") === "owner" ? "owner" : "member";
 
   if (!name || !email) return { error: "A name and an email are needed." };
   if (!isUnit(unit)) return { error: "Pick kilograms or pounds." };
+  if (!isPhase(phase)) return { error: "Pick a training phase." };
   if (store.findUserByEmail(email)) return { error: "That email already has an account." };
 
   const temporary = generateTemporaryPassword();
@@ -43,6 +46,7 @@ export async function addAthlete(_prev: AthleteState, data: FormData): Promise<A
     passwordHash: await hashPassword(temporary),
     role,
     unit,
+    phase,
     mustChangePassword: true,
   });
 
@@ -86,4 +90,28 @@ export async function removeAthlete(_prev: AthleteState, data: FormData): Promis
   store.deleteUser(id);
   revalidatePath("/athletes");
   return { ok: `${athlete.name} removed, along with their training history.` };
+}
+
+/**
+ * Move an athlete into a different phase.
+ *
+ * Takes effect on the next week written. Sessions already on the board keep
+ * the phase they were written under, so the record stays honest about what was
+ * programmed at the time.
+ */
+export async function setPhase(_prev: AthleteState, data: FormData): Promise<AthleteState> {
+  await requireOwner();
+  const store = getStore();
+
+  const id = Number(data.get("id"));
+  const phase = String(data.get("phase") ?? "");
+  if (!isPhase(phase)) return { error: "Pick a training phase." };
+
+  const athlete = store.findUser(id);
+  if (!athlete) return { error: "No such athlete." };
+
+  store.setPhase(id, phase);
+  revalidatePath("/athletes");
+  revalidatePath("/build");
+  return { ok: `${athlete.name} is ${PHASE_SPECS[phase].label.toLowerCase()}. Next week reflects it.` };
 }

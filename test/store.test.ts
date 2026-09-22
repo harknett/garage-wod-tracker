@@ -1,9 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { MIGRATIONS } from "@/lib/db/migrations";
 import { Store } from "@/lib/db/store";
 import { compareScores } from "@/lib/workout/formats";
 import { parseScore } from "@/lib/workout/score";
@@ -18,6 +20,7 @@ function makeUser(name: string, email: string) {
     passwordHash: "scrypt$1$1$1$c2FsdA==$aGFzaA==",
     role: "member",
     unit: "kg",
+    phase: "building",
     mustChangePassword: false,
   });
 }
@@ -29,6 +32,7 @@ function makeWorkout(title = "Cindy") {
     description: "20 minutes.",
     capSeconds: 1200,
     source: "manual",
+    phase: null,
     createdBy: null,
     movements: [
       { name: "Pull-up", reps: 5, sets: null, loadG: null, distanceM: null, seconds: null, notes: "" },
@@ -275,5 +279,127 @@ describe("equipment", () => {
     const [item] = store.listEquipment();
     expect(item!.available).toBe(true);
     expect(item!.detail).toBe("chain snapped");
+  });
+});
+
+describe("training phase", () => {
+  it("starts an athlete where the owner put them", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    expect(user.phase).toBe("building");
+    expect(store.findUser(user.id)!.phase).toBe("building");
+  });
+
+  it("moves an athlete between phases", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.setPhase(user.id, "ramping");
+    expect(store.findUser(user.id)!.phase).toBe("ramping");
+  });
+
+  it("leaves already-written sessions on the phase they were written under", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = store.createWorkout({
+      title: "Heavy day",
+      format: "strength",
+      description: "",
+      capSeconds: null,
+      source: "ai",
+      phase: "building",
+      createdBy: user.id,
+      movements: [
+        { name: "Back squat", reps: 5, sets: 5, loadG: 100_000, distanceM: null, seconds: null, notes: "" },
+      ],
+    });
+
+    // The athlete gets hurt and is moved back to ramping. What was already
+    // programmed must still read as the building session it was.
+    store.setPhase(user.id, "ramping");
+    expect(store.getWorkout(workoutId)!.phase).toBe("building");
+    expect(store.findUser(user.id)!.phase).toBe("ramping");
+  });
+
+  it("accepts a hand-written workout that belongs to no phase", () => {
+    const workoutId = makeWorkout("One-off");
+    expect(store.getWorkout(workoutId)!.phase).toBeNull();
+  });
+
+  it("migrates an existing database, defaulting athletes to ramping", () => {
+    // Migration 1 adds the column to a schema that already has rows. Proven by
+    // stepping a database through migration 0 only, then opening it normally.
+    const legacyDir = mkdtempSync(join(tmpdir(), "gwt-legacy-"));
+    const file = join(legacyDir, "legacy.db");
+    try {
+      const raw = new DatabaseSync(file);
+      raw.exec(MIGRATIONS[0]!);
+      raw.exec("PRAGMA user_version = 1");
+      raw
+        .prepare(
+          `INSERT INTO users (email, name, password_hash, role, unit)
+           VALUES ('old@example.com', 'Old Hand', 'x', 'member', 'kg')`,
+        )
+        .run();
+      raw.close();
+
+      const migrated = new Store(file);
+      expect(migrated.findUserByEmail("old@example.com")!.phase).toBe("ramping");
+      migrated.close();
+    } finally {
+      rmSync(legacyDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("nested transactions", () => {
+  it("lets a transaction-wrapping method be called inside a larger one", () => {
+    // This is exactly what importWeek does: one transaction around a whole
+    // week, with createWorkout opening its own for each session.
+    const ids = store.transaction(() => [makeWorkout("A"), makeWorkout("B")]);
+    expect(ids).toHaveLength(2);
+    expect(store.listWorkouts().map((w) => w.title).sort()).toEqual(["A", "B"]);
+  });
+
+  it("unwinds the whole outer unit when an inner one fails", () => {
+    expect(() =>
+      store.transaction(() => {
+        makeWorkout("Kept?");
+        throw new Error("something failed after the first workout");
+      }),
+    ).toThrow(/something failed/);
+
+    // A half-written week is worse than a failed one, because it looks
+    // finished. Nothing should have survived.
+    expect(store.listWorkouts()).toHaveLength(0);
+  });
+
+  it("recovers to a working connection after a rollback", () => {
+    expect(() =>
+      store.transaction(() => {
+        makeWorkout("Doomed");
+        throw new Error("boom");
+      }),
+    ).toThrow();
+
+    // A leaked savepoint or an unclosed transaction shows up here, as the
+    // next write failing for no visible reason.
+    const id = makeWorkout("After");
+    expect(store.getWorkout(id)!.title).toBe("After");
+    expect(store.listWorkouts()).toHaveLength(1);
+  });
+
+  it("rolls an inner failure back without losing committed outer work", () => {
+    const kept = store.transaction(() => {
+      const id = makeWorkout("Committed");
+      try {
+        store.transaction(() => {
+          makeWorkout("Discarded");
+          throw new Error("inner");
+        });
+      } catch {
+        // Swallowed on purpose: the outer unit decides to carry on.
+      }
+      return id;
+    });
+
+    expect(store.getWorkout(kept)!.title).toBe("Committed");
+    expect(store.listWorkouts().map((w) => w.title)).toEqual(["Committed"]);
   });
 });

@@ -5,8 +5,16 @@ import { useActionState } from "react";
 import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import type { Role } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
+import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
+import type { Phase } from "@/lib/workout/phases";
 
-import { addAthlete, removeAthlete, resetPassword, type AthleteState } from "./actions";
+import {
+  addAthlete,
+  removeAthlete,
+  resetPassword,
+  setPhase,
+  type AthleteState,
+} from "./actions";
 
 interface Row {
   id: number;
@@ -14,6 +22,7 @@ interface Row {
   email: string;
   role: Role;
   unit: Unit;
+  phase: Phase;
   mustChangePassword: boolean;
 }
 
@@ -35,6 +44,7 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
   const [addState, add, adding] = useActionState<AthleteState, FormData>(addAthlete, {});
   const [resetState, reset] = useActionState<AthleteState, FormData>(resetPassword, {});
   const [removeState, remove] = useActionState<AthleteState, FormData>(removeAthlete, {});
+  const [phaseState, movePhase] = useActionState<AthleteState, FormData>(setPhase, {});
 
   return (
     <div className="space-y-4">
@@ -56,6 +66,15 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
                 <option value="lb">Pounds</option>
               </select>
             </Field>
+            <Field label="Phase" hint={PHASE_SPECS.ramping.summary}>
+            <select name="phase" defaultValue="ramping" className={inputClass}>
+              {PHASES.map((p) => (
+                <option key={p} value={p}>
+                  {PHASE_SPECS[p].label}
+                </option>
+              ))}
+            </select>
+            </Field>
             <Field label="Role" hint="Owners can write workouts and manage accounts.">
               <select name="role" defaultValue="member" className={inputClass}>
                 <option value="member">Member</option>
@@ -74,8 +93,8 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
 
       <Card>
         <h2 className="mb-3 font-semibold">Everyone</h2>
-        <Notice kind="error">{resetState.error ?? removeState.error}</Notice>
-        <Notice kind="ok">{resetState.ok ?? removeState.ok}</Notice>
+        <Notice kind="error">{resetState.error ?? removeState.error ?? phaseState.error}</Notice>
+        <Notice kind="ok">{resetState.ok ?? removeState.ok ?? phaseState.ok}</Notice>
         <div className="mt-2">
           <TemporaryPassword value={resetState.password} />
         </div>
@@ -98,9 +117,28 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
                   ) : null}
                 </p>
                 <p className="truncate text-xs opacity-60">
-                  {a.email} · {a.unit}
+                  {a.email} · {a.unit} · {PHASE_SPECS[a.phase].label.toLowerCase()}
                 </p>
               </div>
+
+              {/* Submits on change: a phase move is one decision, not a
+                  decision plus a button nobody remembers to press. */}
+              <form action={movePhase}>
+                <input type="hidden" name="id" value={a.id} />
+                <select
+                  name="phase"
+                  defaultValue={a.phase}
+                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  aria-label={`Training phase for ${a.name}`}
+                  className="min-h-11 rounded-lg border border-black/15 bg-white px-3 text-sm dark:border-white/20 dark:bg-iron dark:text-chalk"
+                >
+                  {PHASES.map((p) => (
+                    <option key={p} value={p}>
+                      {PHASE_SPECS[p].label}
+                    </option>
+                  ))}
+                </select>
+              </form>
 
               <form action={reset}>
                 <input type="hidden" name="id" value={a.id} />

@@ -5,6 +5,7 @@ import type { DayEntry } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
 import { formatDuration, formatLoad } from "@/lib/units";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
+import { PHASE_SPECS } from "@/lib/workout/phases";
 import { formatScore, scoreFromValue } from "@/lib/workout/score";
 
 /** The prescription for one movement, rendered the way it is written down. */
@@ -36,6 +37,11 @@ export function WorkoutCard({ entry, unit }: { entry: DayEntry; unit: Unit }) {
             {workout.capSeconds ? ` · ${formatDuration(workout.capSeconds)} cap` : ""}
             {workout.source === "ai" ? " · written by AI" : ""}
           </p>
+          {/* The phase it was written under, which is not necessarily the
+              phase the athlete is in now. */}
+          {workout.phase ? (
+            <p className="mt-1 text-xs opacity-70">{PHASE_SPECS[workout.phase].summary}</p>
+          ) : null}
         </div>
         {result ? (
           <span className="rounded-lg bg-lime/15 px-3 py-1 text-sm font-semibold text-lime dark:text-lime-300">

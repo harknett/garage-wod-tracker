@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { claimOwner, type FormState } from "../actions";
 import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
+import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
 
 export function SetupForm({ configured }: { configured: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(claimOwner, {});
@@ -48,6 +49,15 @@ export function SetupForm({ configured }: { configured: boolean }) {
             minLength={MIN_PASSWORD_LENGTH}
             className={inputClass}
           />
+        </Field>
+        <Field label="Where are you right now" hint={PHASE_SPECS.ramping.summary}>
+            <select name="phase" defaultValue="ramping" className={inputClass}>
+              {PHASES.map((p) => (
+                <option key={p} value={p}>
+                  {PHASE_SPECS[p].label}
+                </option>
+              ))}
+            </select>
         </Field>
         <Field label="Weights in" hint="You can change this later, and each athlete picks their own.">
           <select name="unit" defaultValue="kg" className={inputClass}>

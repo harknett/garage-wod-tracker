@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/throttle";
 import { getStore } from "@/lib/db";
 import { isUnit } from "@/lib/units";
+import { isPhase } from "@/lib/workout/phases";
 
 export interface FormState {
   error?: string;
@@ -76,8 +77,10 @@ export async function claimOwner(_prev: FormState, data: FormData): Promise<Form
   const name = String(data.get("name") ?? "").trim();
   const password = String(data.get("password") ?? "");
   const unitRaw = String(data.get("unit") ?? "kg");
+  const phaseRaw = String(data.get("phase") ?? "ramping");
   if (!email || !name) return { error: "Enter your name and email." };
   if (!isUnit(unitRaw)) return { error: "Pick kilograms or pounds." };
+  if (!isPhase(phaseRaw)) return { error: "Pick a training phase." };
 
   try {
     validatePassword(password);
@@ -91,6 +94,7 @@ export async function claimOwner(_prev: FormState, data: FormData): Promise<Form
     passwordHash: await hashPassword(password),
     role: "owner",
     unit: unitRaw,
+    phase: phaseRaw,
     mustChangePassword: false,
   });
   await startSession(user.id);

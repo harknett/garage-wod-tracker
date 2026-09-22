@@ -5,12 +5,15 @@ import { useActionState, useState } from "react";
 import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import type { Unit } from "@/lib/units";
 import { FORMATS, FORMAT_SPECS } from "@/lib/workout/formats";
+import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
+import type { Phase } from "@/lib/workout/phases";
 
 import { createManual, generate, type BuildState } from "./actions";
 
 interface Athlete {
   id: number;
   name: string;
+  phase: Phase;
 }
 
 /** Spare movement rows, so adding a movement needs no JavaScript round-trip. */
@@ -53,6 +56,18 @@ function AiForm({
   aiReady: boolean;
 }) {
   const [state, action, pending] = useActionState<BuildState, FormData>(generate, {});
+  // Tracked in state so changing the athlete moves the phase with them; the
+  // coach can still override it for this one week.
+  const [athleteId, setAthleteId] = useState(defaultAthleteId);
+  const [phase, setPhase] = useState<Phase>(
+    athletes.find((a) => a.id === defaultAthleteId)?.phase ?? "ramping",
+  );
+
+  function chooseAthlete(id: number) {
+    setAthleteId(id);
+    const next = athletes.find((a) => a.id === id)?.phase;
+    if (next) setPhase(next);
+  }
 
   return (
     <Card>
@@ -67,7 +82,12 @@ function AiForm({
       <form action={action} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="For">
-            <select name="athleteId" defaultValue={defaultAthleteId} className={inputClass}>
+            <select
+              name="athleteId"
+              value={athleteId}
+              onChange={(e) => chooseAthlete(Number(e.target.value))}
+              className={inputClass}
+            >
               {athletes.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -89,6 +109,25 @@ function AiForm({
             />
           </Field>
         </div>
+
+        <Field label="Phase" hint={PHASE_SPECS[phase].summary}>
+          <select
+            name="phase"
+            value={phase}
+            onChange={(e) => setPhase(e.target.value as Phase)}
+            className={inputClass}
+          >
+            {PHASES.map((p) => (
+              <option key={p} value={p}>
+                {PHASE_SPECS[p].label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs opacity-60">
+            Their standing phase. Change it here to write one week differently without moving
+            them — move them for good on Athletes.
+          </p>
+        </Field>
 
         <Field
           label="Brief"
@@ -176,6 +215,17 @@ function ManualForm({
               </label>
             ))}
           </div>
+        </Field>
+
+        <Field label="Phase" hint="What this session is for. Leave as none for a one-off.">
+          <select name="phase" defaultValue="" className={inputClass}>
+            <option value="">No phase</option>
+            {PHASES.map((p) => (
+              <option key={p} value={p}>
+                {PHASE_SPECS[p].label}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Description" hint="Warm-up, standards, cool-down.">

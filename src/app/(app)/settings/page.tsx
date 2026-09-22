@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signOut } from "../../(auth)/actions";
 import { Card, PageTitle } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guard";
+import { PHASE_SPECS } from "@/lib/workout/phases";
 
 import { ProfileForm } from "./form";
 
@@ -15,6 +16,17 @@ export default async function SettingsPage() {
   return (
     <>
       <PageTitle sub={user.email}>You</PageTitle>
+
+      <Card className="mb-4">
+        <h2 className="font-semibold">{PHASE_SPECS[user.phase].label}</h2>
+        <p className="mt-1 text-sm opacity-80">{PHASE_SPECS[user.phase].summary}</p>
+        {/* Read-only on purpose: the phase is a coaching decision, and an
+            athlete who can flip themselves into Building on a bad week is an
+            athlete with no phase at all. */}
+        <p className="mt-3 text-xs opacity-60">
+          Your coach sets this. It decides how every week is written for you.
+        </p>
+      </Card>
 
       <ProfileForm name={user.name} unit={user.unit} />
 

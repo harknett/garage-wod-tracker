@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
+import type { Phase } from "@/lib/workout/phases";
 
 import { MIGRATIONS } from "./migrations";
 import type {
@@ -36,6 +37,7 @@ function mapUser(r: Row): User {
     name: str(r.name),
     role: str(r.role) as Role,
     unit: str(r.unit) as Unit,
+    phase: str(r.phase) as Phase,
     mustChangePassword: bool(r.must_change_password),
     createdAt: str(r.created_at),
   };
@@ -49,6 +51,7 @@ function mapWorkout(r: Row): Workout {
     description: str(r.description),
     capSeconds: nnum(r.cap_seconds),
     source: str(r.source) as Source,
+    phase: r.phase == null ? null : (str(r.phase) as Phase),
     createdBy: nnum(r.created_by),
     createdAt: str(r.created_at),
   };
@@ -119,6 +122,8 @@ function mapAssignment(r: Row): Assignment {
 
 export class Store {
   private readonly db: DatabaseSync;
+  /** Nesting depth, so an inner `transaction` becomes a savepoint. */
+  private depth = 0;
 
   constructor(filename: string) {
     this.db = new DatabaseSync(filename);
@@ -140,15 +145,41 @@ export class Store {
     this.db.close();
   }
 
+  /**
+   * Run work as one unit, re-entrantly.
+   *
+   * SQLite has no nested `BEGIN`, but the methods here legitimately nest:
+   * `importWeek` wraps a whole generated week, and each `createWorkout` inside
+   * it wraps its own rows. Without savepoints that combination throws
+   * "cannot start a transaction within a transaction" and no week ever
+   * imports.
+   *
+   * The outermost call owns the real transaction; inner ones become
+   * savepoints, so a failure deep inside still unwinds to the outermost
+   * boundary rather than committing half a week.
+   */
   transaction<T>(work: () => T): T {
-    this.db.exec("BEGIN");
+    const nested = this.depth > 0;
+    const name = `sp_${this.depth}`;
+
+    this.db.exec(nested ? `SAVEPOINT ${name}` : "BEGIN");
+    this.depth++;
     try {
       const result = work();
-      this.db.exec("COMMIT");
+      this.db.exec(nested ? `RELEASE ${name}` : "COMMIT");
       return result;
     } catch (err) {
-      this.db.exec("ROLLBACK");
+      if (nested) {
+        // ROLLBACK TO rewinds to the savepoint but leaves it on the stack;
+        // RELEASE pops it, so the outer transaction is not left holding one.
+        this.db.exec(`ROLLBACK TO ${name}`);
+        this.db.exec(`RELEASE ${name}`);
+      } else {
+        this.db.exec("ROLLBACK");
+      }
       throw err;
+    } finally {
+      this.depth--;
     }
   }
 
@@ -164,12 +195,13 @@ export class Store {
     passwordHash: string;
     role: Role;
     unit: Unit;
+    phase: Phase;
     mustChangePassword: boolean;
   }): User {
     const row = this.db
       .prepare(
-        `INSERT INTO users (email, name, password_hash, role, unit, must_change_password)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
+        `INSERT INTO users (email, name, password_hash, role, unit, phase, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
       )
       .get(
         input.email.trim().toLowerCase(),
@@ -177,6 +209,7 @@ export class Store {
         input.passwordHash,
         input.role,
         input.unit,
+        input.phase,
         input.mustChangePassword ? 1 : 0,
       ) as Row;
     return mapUser(row);
@@ -206,6 +239,16 @@ export class Store {
 
   setUnit(userId: number, unit: Unit): void {
     this.db.prepare("UPDATE users SET unit = ? WHERE id = ?").run(unit, userId);
+  }
+
+  /**
+   * Move an athlete into a phase.
+   *
+   * Nothing already written changes: a workout carries the phase it was
+   * written under, so the record still shows what was programmed and why.
+   */
+  setPhase(userId: number, phase: Phase): void {
+    this.db.prepare("UPDATE users SET phase = ? WHERE id = ?").run(phase, userId);
   }
 
   setName(userId: number, name: string): void {
@@ -294,8 +337,8 @@ export class Store {
     return this.transaction(() => {
       const row = this.db
         .prepare(
-          `INSERT INTO workouts (title, format, description, cap_seconds, source, created_by)
-           VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO workouts (title, format, description, cap_seconds, source, phase, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         )
         .get(
           input.title.trim(),
@@ -303,6 +346,7 @@ export class Store {
           input.description,
           input.capSeconds,
           input.source,
+          input.phase,
           input.createdBy,
         ) as Row;
       const workoutId = num(row.id);

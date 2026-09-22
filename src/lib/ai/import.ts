@@ -4,6 +4,7 @@ import { getStore } from "@/lib/db";
 import type { NewMovement } from "@/lib/db/types";
 import { addDays } from "@/lib/dates";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
+import type { Phase } from "@/lib/workout/phases";
 
 import type { GeneratedWeek } from "./schema";
 
@@ -18,7 +19,12 @@ import type { GeneratedWeek } from "./schema";
  * the planner and four missing - is worse than a failed one, because it looks
  * like a finished week.
  */
-export function importWeek(week: GeneratedWeek, userId: number, startDate: string): number[] {
+export function importWeek(
+  week: GeneratedWeek,
+  userId: number,
+  startDate: string,
+  phase: Phase,
+): number[] {
   const store = getStore();
 
   return store.transaction(() =>
@@ -41,6 +47,10 @@ export function importWeek(week: GeneratedWeek, userId: number, startDate: strin
         // strength day is the model being tidy rather than a real constraint.
         capSeconds: FORMAT_SPECS[w.format].capped ? w.cap_seconds : null,
         source: "ai",
+        // Stamped from the phase the week was generated under, not read back
+        // out of the model: the phase is an input, and a model that renamed it
+        // would quietly rewrite the record of what was asked for.
+        phase,
         createdBy: userId,
         movements,
       });

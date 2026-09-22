@@ -6,6 +6,8 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { User } from "@/lib/db/types";
 
 import { equipmentContext, trainingContext } from "./context";
+import { PHASE_SPECS } from "@/lib/workout/phases";
+import type { Phase } from "@/lib/workout/phases";
 import { GeneratedWeek } from "./schema";
 
 /**
@@ -66,6 +68,8 @@ export interface GenerateOptions {
   /** How many days the week should cover. */
   days: number;
   athlete: User;
+  /** The phase this week is written under. Steers volume, load and intensity. */
+  phase: Phase;
 }
 
 export async function generateWeek(options: GenerateOptions): Promise<GeneratedWeek> {
@@ -90,6 +94,13 @@ export async function generateWeek(options: GenerateOptions): Promise<GeneratedW
         role: "user",
         content: [
           `Write ${options.days} day(s) of training for ${options.athlete.name}.`,
+          "",
+          "--- training phase ---",
+          // The phase outranks the coach's brief and the history: it is the
+          // frame both of those are read inside.
+          PHASE_SPECS[options.phase].brief,
+          "",
+          "Say in the summary how this week reflects that phase.",
           "",
           "The coach asks for:",
           options.prompt.trim() || "(nothing specific - use your judgement)",

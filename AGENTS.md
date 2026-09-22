@@ -29,6 +29,15 @@ someone is reading them mid-session with chalk on their hands.
 - **Loads are whole grams, durations are seconds.** Kilograms and pounds are
   renderings. Convert at the boundary — form input and AI import — and nowhere
   else.
+- **A phase is not a label — it changes the week.** `PHASE_SPECS[phase].brief`
+  is the instruction the model actually receives, and it outranks the coach's
+  brief. Keep `summary` (on screen) and `brief` (to the model) saying the same
+  thing.
+- **A workout keeps the phase it was written under.** `users.phase` is now;
+  `workouts.phase` is history. Never backfill the second from the first.
+- **`Store.transaction` is re-entrant via savepoints.** Methods that wrap their
+  own writes nest legitimately (`importWeek` around `createWorkout`); plain
+  `BEGIN` would throw. Keep new multi-write methods going through it.
 - **The equipment list is a hard constraint on generation.** Only
   `availableEquipment()` reaches the prompt: listing a broken rower is the same
   as programming one.

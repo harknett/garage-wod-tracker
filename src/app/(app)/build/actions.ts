@@ -10,6 +10,7 @@ import type { NewMovement } from "@/lib/db/types";
 import { isValidDate, weekStart } from "@/lib/dates";
 import { UnitParseError, parseDuration, parseLoad } from "@/lib/units";
 import { isFormat, FORMAT_SPECS } from "@/lib/workout/formats";
+import { PHASE_SPECS, isPhase } from "@/lib/workout/phases";
 
 export interface BuildState {
   error?: string;
@@ -42,17 +43,26 @@ export async function generate(_prev: BuildState, data: FormData): Promise<Build
     return { error: "A week runs from one to seven days." };
   }
 
+  // The athlete's standing phase, unless the coach overrides it for this week
+  // alone. An override does not move the athlete — that is a separate,
+  // deliberate act on the Athletes screen.
+  const phaseRaw = String(data.get("phase") ?? athlete.phase);
+  if (!isPhase(phaseRaw)) return { error: "Pick a training phase." };
+
   try {
     const week = await generateWeek({
       prompt: String(data.get("prompt") ?? ""),
       days,
       athlete,
+      phase: phaseRaw,
     });
-    importWeek(week, athlete.id, start);
+    importWeek(week, athlete.id, start, phaseRaw);
     revalidatePath("/week");
     revalidatePath("/");
     return {
-      ok: `Wrote ${week.workouts.length} session(s) for ${athlete.name}, starting ${start}.`,
+      ok:
+        `Wrote ${week.workouts.length} session(s) for ${athlete.name}, ` +
+        `${PHASE_SPECS[phaseRaw].label.toLowerCase()}, starting ${start}.`,
       summary: week.summary,
     };
   } catch (err) {
@@ -83,6 +93,11 @@ export async function createManual(_prev: BuildState, data: FormData): Promise<B
 
   const date = String(data.get("date") ?? "");
   if (!isValidDate(date)) return { error: "Pick a date." };
+
+  const phase = String(data.get("phase") ?? "");
+  // A hand-written workout need not belong to a phase; "none" is a real answer
+  // for a one-off, and is not the same as forgetting to choose.
+  if (phase !== "" && !isPhase(phase)) return { error: "Pick a training phase, or none." };
 
   try {
     const capText = String(data.get("cap") ?? "").trim();
@@ -119,6 +134,7 @@ export async function createManual(_prev: BuildState, data: FormData): Promise<B
       description: String(data.get("description") ?? "").trim(),
       capSeconds,
       source: "manual",
+      phase: phase === "" ? null : phase,
       createdBy: owner.id,
       movements,
     });
