@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  --color-chalk: #f5f3ef;
+  --color-iron: #1c1b1a;
+}
+
+html {
+  color-scheme: light dark;
+}
