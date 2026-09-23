@@ -14,7 +14,8 @@ phone. Next.js, SQLite, no account anywhere else.
 | **Training phases** | Every athlete is *ramping*, *conditioning*, *leaning* or *building*. The phase is the frame the whole week is written inside, and each session is stamped with the phase it was written under. |
 | **AI weeks** | Claude writes a cohesive week against the athlete's phase, their last eight weeks of logged results, their RPE and notes, and the gym's equipment list. |
 | **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
-| **Logging** | A score per workout plus per-movement reps, load, time and distance. Built for a phone, mid-session, with one hand. |
+| **Logging** | Per-movement reps, load, time and distance. The workout's result is derived from those as you type, never entered separately. Built for a phone, mid-session, with one hand. |
+| **Planning** | Sessions can be moved to any other day from the week view; a logged result moves with them. |
 | **Units** | Loads in kilograms or pounds, per athlete. Both are stored as grams, so two people logging the same barbell land on the same number. |
 | **Leaderboard** | Any workout two or more athletes have done, ranked in the direction that format actually runs. |
 | **Progress** | Sessions per week, RPE trend, format mix, and the heaviest load recorded per movement. |
@@ -83,10 +84,12 @@ after an injury and last week still reads as the building week it was.
 
 ## Two things worth knowing
 
-**A score means nothing without its format.** `45` is forty-five seconds in a
-for-time and forty-five rounds in an EMOM, and nothing in the text tells them
-apart. So `parseScore` takes the format rather than guessing, and the format
-also decides which direction the leaderboard sorts.
+**The result is derived, never typed.** An athlete logs what they actually did
+per movement, and the format decides what that adds up to: total reps divided
+back into rounds for an AMRAP, working time for a for-time, the heaviest single
+set for strength. Asking for both a score and the movements invites them to
+disagree, and when they do there is no way to tell which one is the lie. The
+same format spec decides which direction the leaderboard sorts.
 
 **Loads are stored as whole grams.** Kilograms and pounds are both renderings
 of that one number. A float would sort fine and group badly — `60.000000000000004`

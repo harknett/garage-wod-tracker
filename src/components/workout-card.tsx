@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Card } from "@/components/ui";
+import { MoveWorkout } from "@/components/move-workout";
 import type { DayEntry } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
 import { formatDuration, formatLoad } from "@/lib/units";
@@ -23,7 +24,16 @@ function prescription(
   return bits.join(" · ");
 }
 
-export function WorkoutCard({ entry, unit }: { entry: DayEntry; unit: Unit }) {
+export function WorkoutCard({
+  entry,
+  unit,
+  movable = false,
+}: {
+  entry: DayEntry;
+  unit: Unit;
+  /** Show the date picker that shifts this session to another day. */
+  movable?: boolean;
+}) {
   const { workout, result, assignment } = entry;
   const spec = FORMAT_SPECS[workout.format];
 
@@ -72,12 +82,15 @@ export function WorkoutCard({ entry, unit }: { entry: DayEntry; unit: Unit }) {
         </ul>
       ) : null}
 
-      <Link
-        href={`/log/${assignment.id}`}
-        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
-      >
-        {result ? "Fix the record" : "Log it"}
-      </Link>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={`/log/${assignment.id}`}
+          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
+        >
+          {result ? "Fix the record" : "Log it"}
+        </Link>
+        {movable ? <MoveWorkout assignmentId={assignment.id} date={assignment.date} /> : null}
+      </div>
     </Card>
   );
 }

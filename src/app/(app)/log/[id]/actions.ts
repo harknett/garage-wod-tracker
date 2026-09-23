@@ -7,8 +7,9 @@ import { requireUser } from "@/lib/auth/guard";
 import { getStore } from "@/lib/db";
 import type { MovementResult } from "@/lib/db/types";
 import { parseDuration, parseLoad, UnitParseError } from "@/lib/units";
+import { deriveScore } from "@/lib/workout/derive";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
-import { ScoreParseError, parseScore } from "@/lib/workout/score";
+import { ScoreParseError } from "@/lib/workout/score";
 
 export interface LogState {
   error?: string;
@@ -31,7 +32,11 @@ function optionalInt(data: FormData, key: string, what: string): number | null {
  * Save what happened.
  *
  * Everything is parsed before anything is written, so a mistyped weight in the
- * last movement does not leave the first three saved and the score lost.
+ * last movement does not leave the first three saved and the rest lost.
+ *
+ * The score is derived from the movements rather than typed. Asking for both
+ * invites them to disagree, and when they do there is no way to tell which one
+ * is the lie — so there is only one place the truth is entered.
  */
 export async function saveResult(_prev: LogState, data: FormData): Promise<LogState> {
   const user = await requireUser();
@@ -50,9 +55,6 @@ export async function saveResult(_prev: LogState, data: FormData): Promise<LogSt
   const unit = user.unit;
 
   try {
-    const scoreText = optional(data, "score");
-    const score = scoreText === null ? null : parseScore(scoreText, workout.format, unit);
-
     const movements: MovementResult[] = workout.movements.map((m) => {
       const loadText = optional(data, `load_${m.id}`);
       const timeText = optional(data, `seconds_${m.id}`);
@@ -68,6 +70,8 @@ export async function saveResult(_prev: LogState, data: FormData): Promise<LogSt
 
     const rpe = optionalInt(data, "rpe", "RPE");
     if (rpe !== null && (rpe < 1 || rpe > 10)) return { error: "RPE runs from 1 to 10." };
+
+    const score = deriveScore(workout.format, workout.movements, movements);
 
     store.saveResult(
       {

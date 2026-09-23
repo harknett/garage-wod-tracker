@@ -411,6 +411,38 @@ export class Store {
       .run(workoutId, userId, date, position);
   }
 
+  /**
+   * Move an assignment to another day.
+   *
+   * Any result moves with it. `results.date` is a copy of the assignment's
+   * date — denormalised so the weekly and per-week analytics queries do not
+   * have to join — which means leaving it behind would quietly put a session
+   * in two places at once: on the new day in the planner and the old one in
+   * the record.
+   *
+   * Returns false when the athlete already has that workout on the target
+   * day, which the unique index would otherwise reject with a raw SQL error.
+   */
+  moveAssignment(id: number, userId: number, date: string): boolean {
+    return this.transaction(() => {
+      const assignment = this.findAssignment(id);
+      if (!assignment || assignment.userId !== userId) return false;
+      if (assignment.date === date) return true;
+
+      const clash = this.db
+        .prepare(
+          `SELECT 1 FROM assignments
+           WHERE user_id = ? AND date = ? AND workout_id = ? AND id != ?`,
+        )
+        .get(userId, date, assignment.workoutId, id);
+      if (clash) return false;
+
+      this.db.prepare("UPDATE assignments SET date = ? WHERE id = ?").run(date, id);
+      this.db.prepare("UPDATE results SET date = ? WHERE assignment_id = ?").run(date, id);
+      return true;
+    });
+  }
+
   deleteAssignment(id: number, userId: number): void {
     this.db.prepare("DELETE FROM assignments WHERE id = ? AND user_id = ?").run(id, userId);
   }

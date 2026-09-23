@@ -57,7 +57,12 @@ export default async function WeekPage({
               ) : (
                 <div className="space-y-3">
                   {forDay.map((entry) => (
-                    <WorkoutCard key={entry.assignment.id} entry={entry} unit={user.unit} />
+                    <WorkoutCard
+                      key={entry.assignment.id}
+                      entry={entry}
+                      unit={user.unit}
+                      movable
+                    />
                   ))}
                 </div>
               )}

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MIGRATIONS } from "@/lib/db/migrations";
 import { Store } from "@/lib/db/store";
 import { compareScores } from "@/lib/workout/formats";
-import { parseScore } from "@/lib/workout/score";
+import { roundsValue } from "@/lib/workout/score";
 
 let dir: string;
 let store: Store;
@@ -115,7 +115,7 @@ describe("assignments and results", () => {
     const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
     expect(entry!.result).toBeNull();
 
-    const score = parseScore("18+7", "amrap");
+    const score = { kind: "rounds" as const, value: roundsValue(18, 7) };
     store.saveResult(
       {
         assignmentId: entry!.assignment.id,
@@ -150,8 +150,8 @@ describe("assignments and results", () => {
     store.assign(workoutId, user.id, "2026-09-21");
     const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
 
-    const save = (text: string) => {
-      const score = parseScore(text, "amrap");
+    const save = (rounds: number, reps: number) => {
+      const score = { kind: "rounds" as const, value: roundsValue(rounds, reps) };
       store.saveResult(
         {
           assignmentId: entry!.assignment.id,
@@ -166,12 +166,12 @@ describe("assignments and results", () => {
       );
     };
 
-    save("18+7");
-    save("17+3"); // miscounted, corrected a minute later
+    save(18, 7);
+    save(17, 3); // miscounted, corrected a minute later
 
     expect(store.leaderboard(workoutId)).toHaveLength(1);
     const [entryAfter] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
-    expect(entryAfter!.result!.scoreValue).toBe(parseScore("17+3", "amrap").value);
+    expect(entryAfter!.result!.scoreValue).toBe(roundsValue(17, 3));
   });
 
   it("refuses to log against somebody else's assignment", () => {
@@ -212,13 +212,13 @@ describe("leaderboard", () => {
     const sam = makeUser("Sam", "sam@example.com");
     const workoutId = makeWorkout();
 
-    for (const [user, text] of [
-      [alex, "18+7"],
-      [sam, "20+2"],
+    for (const [user, rounds, reps] of [
+      [alex, 18, 7],
+      [sam, 20, 2],
     ] as const) {
       store.assign(workoutId, user.id, "2026-09-21");
       const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
-      const score = parseScore(text, "amrap");
+      const score = { kind: "rounds" as const, value: roundsValue(rounds, reps) };
       store.saveResult(
         {
           assignmentId: entry!.assignment.id,
@@ -460,5 +460,81 @@ describe("nested transactions", () => {
 
     expect(store.getWorkout(kept)!.title).toBe("Committed");
     expect(store.listWorkouts().map((w) => w.title)).toEqual(["Committed"]);
+  });
+});
+
+describe("moving a session", () => {
+  function assignAndLog(userId: number, workoutId: number, date: string) {
+    store.assign(workoutId, userId, date);
+    const [entry] = store.entriesBetween(userId, date, date);
+    store.saveResult(
+      {
+        assignmentId: entry!.assignment.id,
+        scoreValue: 18_007,
+        scoreKind: "rounds",
+        scaled: false,
+        rpe: 8,
+        notes: "",
+        movements: [],
+      },
+      userId,
+    );
+    return entry!.assignment.id;
+  }
+
+  it("moves the session to another day", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = makeWorkout();
+    store.assign(workoutId, user.id, "2026-09-21");
+    const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
+
+    expect(store.moveAssignment(entry!.assignment.id, user.id, "2026-09-24")).toBe(true);
+    expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(0);
+    expect(store.entriesBetween(user.id, "2026-09-24", "2026-09-24")).toHaveLength(1);
+  });
+
+  it("takes the logged result with it", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const id = assignAndLog(user.id, makeWorkout(), "2026-09-21");
+
+    store.moveAssignment(id, user.id, "2026-09-24");
+
+    // results.date is a denormalised copy; leaving it behind would put the
+    // session on the new day in the planner and the old one in the record.
+    const [moved] = store.entriesBetween(user.id, "2026-09-24", "2026-09-24");
+    expect(moved!.result!.date).toBe("2026-09-24");
+    expect(moved!.result!.rpe).toBe(8);
+    expect(store.resultsSince(user.id, "2026-09-22")).toHaveLength(1);
+  });
+
+  it("refuses to move onto a day that already holds the same workout", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = makeWorkout();
+    store.assign(workoutId, user.id, "2026-09-21");
+    store.assign(workoutId, user.id, "2026-09-24");
+    const [first] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
+
+    // The unique index would otherwise reject this with a raw SQL error.
+    expect(store.moveAssignment(first!.assignment.id, user.id, "2026-09-24")).toBe(false);
+    expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
+  });
+
+  it("treats a move to the same day as a no-op, not a clash", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = makeWorkout();
+    store.assign(workoutId, user.id, "2026-09-21");
+    const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
+    expect(store.moveAssignment(entry!.assignment.id, user.id, "2026-09-21")).toBe(true);
+  });
+
+  it("will not move somebody else's session", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const workoutId = makeWorkout();
+    store.assign(workoutId, alex.id, "2026-09-21");
+    const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
+
+    expect(store.moveAssignment(entry!.assignment.id, sam.id, "2026-09-24")).toBe(false);
+    expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
   });
 });

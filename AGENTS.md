@@ -23,9 +23,16 @@ someone is reading them mid-session with chalk on their hands.
 
 ## Rules that are easy to break
 
-- **A score is meaningless without its format.** `parseScore` takes the format;
-  never infer it from the text. The format also owns sort direction
+- **Scores are derived, never typed.** `deriveScore` turns logged movements
+  into the workout's result, keyed off the format's score kind. Nothing in the
+  UI should ask for a score directly. The format also owns sort direction
   (`compareScores`), so leaderboard ranking cannot happen in SQL.
+- **A null score is not a zero.** It means started-but-not-recorded, and it
+  sorts last in both directions; a zero would beat every finisher in a
+  lower-is-better workout.
+- **`results.date` is a denormalised copy of the assignment's date.** Moving a
+  session must update both, or it sits on one day in the planner and another
+  in the record.
 - **Loads are whole grams, durations are seconds.** Kilograms and pounds are
   renderings. Convert at the boundary — form input and AI import — and nowhere
   else.
