@@ -81,6 +81,8 @@ export interface Result {
   scoreValue: number | null;
   scoreKind: ScoreKind;
   scaled: boolean;
+  /** False while the session is still being logged. */
+  completed: boolean;
   rpe: number | null;
   notes: string;
   createdAt: string;
@@ -106,6 +108,7 @@ export interface NewResult {
   scoreValue: number | null;
   scoreKind: ScoreKind;
   scaled: boolean;
+  completed: boolean;
   rpe: number | null;
   notes: string;
   movements: MovementResult[];

@@ -30,6 +30,13 @@ someone is reading them mid-session with chalk on their hands.
 - **A null score is not a zero.** It means started-but-not-recorded, and it
   sorts last in both directions; a zero would beat every finisher in a
   lower-is-better workout.
+- **A result can exist before the session is over.** `results.completed`
+  separates a draft from a finished session; the logging screen autosaves with
+  `completed: false` and only the finish sets it true. Every query that ranks
+  or counts training filters `completed = 1` — leaderboard, analytics and the
+  AI context — or a workout abandoned halfway lands on the board as a finished
+  bad score. Finishing sticks: the upsert takes `MAX(completed)` so a late
+  autosave cannot reopen a session.
 - **Removing an assignment destroys training history.** `results` is keyed on
   the assignment and cascades, so it is the only action in the app that can
   delete a logged session. Any control that calls it asks twice and names what

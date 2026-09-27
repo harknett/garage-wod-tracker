@@ -126,6 +126,8 @@ describe("assignments and results", () => {
         scoreValue: score.value,
         scoreKind: score.kind,
         scaled: false,
+
+        completed: true,
         rpe: 8,
         notes: "Grip went first.",
         movements: [
@@ -162,6 +164,8 @@ describe("assignments and results", () => {
           scoreValue: score.value,
           scoreKind: score.kind,
           scaled: false,
+
+          completed: true,
           rpe: null,
           notes: "",
           movements: [],
@@ -192,6 +196,8 @@ describe("assignments and results", () => {
           scoreValue: 1,
           scoreKind: "rounds",
           scaled: false,
+
+          completed: true,
           rpe: null,
           notes: "",
           movements: [],
@@ -229,6 +235,8 @@ describe("leaderboard", () => {
           scoreValue: score.value,
           scoreKind: score.kind,
           scaled: false,
+
+          completed: true,
           rpe: null,
           notes: "",
           movements: [],
@@ -254,6 +262,8 @@ describe("leaderboard", () => {
         scoreValue: 5,
         scoreKind: "rounds",
         scaled: false,
+
+        completed: true,
         rpe: null,
         notes: "",
         movements: [],
@@ -482,6 +492,8 @@ describe("moving a session", () => {
         scoreValue: 18_007,
         scoreKind: "rounds",
         scaled: false,
+
+        completed: true,
         rpe: 8,
         notes: "",
         movements: [],
@@ -689,6 +701,8 @@ describe("programming tracks", () => {
         scoreValue: roundsValue(8, 0),
         scoreKind: "rounds",
         scaled: false,
+
+        completed: true,
         rpe: 8,
         notes: "",
         movements: [],
@@ -756,6 +770,8 @@ describe("removing a session from a week", () => {
         scoreValue: roundsValue(18, 7),
         scoreKind: "rounds",
         scaled: false,
+
+        completed: true,
         rpe: 8,
         notes: "",
         movements: [],
@@ -864,5 +880,109 @@ describe("weeks written in one go", () => {
       expect(store.getWorkout(id)).toBeDefined();
       expect(store.getWorkout(id)!.planId).toBeNull();
     }
+  });
+});
+
+describe("logging as you go", () => {
+  function start(userId: number, workoutId: number) {
+    store.assign(workoutId, userId, "2026-09-21");
+    const [entry] = store.entriesBetween(userId, "2026-09-21", "2026-09-21");
+    return entry!;
+  }
+
+  const draft = (assignmentId: number, value: number, completed: boolean) => ({
+    assignmentId,
+    scoreValue: value,
+    scoreKind: "rounds" as const,
+    scaled: false,
+    completed,
+    rpe: null,
+    notes: "",
+    movements: [],
+  });
+
+  it("keeps a part-logged session without marking it done", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const entry = start(user.id, makeWorkout());
+    store.saveResult(draft(entry.assignment.id, roundsValue(4, 0), false), user.id);
+
+    const saved = store.resultFor(entry.assignment.id)!;
+    expect(saved.completed).toBe(false);
+    expect(saved.scoreValue).toBe(roundsValue(4, 0));
+  });
+
+  it("keeps a draft off the leaderboard", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const workoutId = makeWorkout();
+
+    const a = start(alex.id, workoutId);
+    store.saveResult(draft(a.assignment.id, roundsValue(4, 0), false), alex.id);
+    const s = start(sam.id, workoutId);
+    store.saveResult(draft(s.assignment.id, roundsValue(20, 2), true), sam.id);
+
+    // Ranking somebody on the two movements they have got through so far is
+    // not a leaderboard, it is a distraction.
+    const board = store.leaderboard(workoutId);
+    expect(board.map((r) => r.name)).toEqual(["Sam"]);
+  });
+
+  it("keeps a draft out of the analytics and the prompt", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const entry = start(user.id, makeWorkout());
+    store.saveResult(draft(entry.assignment.id, roundsValue(4, 0), false), user.id);
+
+    expect(store.resultsSince(user.id, "2026-01-01")).toHaveLength(0);
+    expect(store.sessionsByWeek(user.id, "2026-01-01")).toHaveLength(0);
+    expect(store.formatMix(user.id, "2026-01-01")).toHaveLength(0);
+  });
+
+  it("counts it everywhere once it is finished", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const entry = start(user.id, makeWorkout());
+    store.saveResult(draft(entry.assignment.id, roundsValue(4, 0), false), user.id);
+    store.saveResult(draft(entry.assignment.id, roundsValue(18, 7), true), user.id);
+
+    const saved = store.resultFor(entry.assignment.id)!;
+    expect(saved.completed).toBe(true);
+    expect(saved.scoreValue).toBe(roundsValue(18, 7));
+    expect(store.resultsSince(user.id, "2026-01-01")).toHaveLength(1);
+  });
+
+  it("will not let a late autosave reopen a finished session", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const entry = start(user.id, makeWorkout());
+    store.saveResult(draft(entry.assignment.id, roundsValue(18, 7), true), user.id);
+
+    // A debounced save can land after the finish; it must not undo it.
+    store.saveResult(draft(entry.assignment.id, roundsValue(18, 7), false), user.id);
+    expect(store.resultFor(entry.assignment.id)!.completed).toBe(true);
+  });
+
+  it("migrates existing results as finished", () => {
+    withLegacyDb(5, (raw) => {
+      raw.prepare(
+        `INSERT INTO users (email, name, password_hash, role, unit, phase, track)
+         VALUES ('old@example.com','Old Hand','x','member','kg','building','long')`,
+      ).run();
+      raw.prepare(
+        `INSERT INTO workouts (title, format, description, source)
+         VALUES ('Cindy','amrap','','manual')`,
+      ).run();
+      raw.prepare(
+        `INSERT INTO assignments (workout_id, user_id, date) VALUES (1, 1, '2026-09-21')`,
+      ).run();
+      raw.prepare(
+        `INSERT INTO results (assignment_id, user_id, workout_id, date, score_value, score_kind)
+         VALUES (1, 1, 1, '2026-09-21', 18007, 'rounds')`,
+      ).run();
+    }, (migrated) => {
+      // Everything written before this was entered in one go at the end,
+      // which is the definition of finished. A default of 0 would have wiped
+      // every existing result off the leaderboard.
+      const [row] = migrated.leaderboard(1);
+      expect(row).toBeDefined();
+      expect(migrated.resultFor(1)!.completed).toBe(true);
+    });
   });
 });

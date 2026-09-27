@@ -216,4 +216,16 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workouts ADD COLUMN plan_id INTEGER
     REFERENCES plans(id) ON DELETE SET NULL;
   `,
+
+  // Logging as you go means a result row can exist before the session is
+  // over. Without a way to tell the two apart, a session abandoned halfway
+  // would sit on the leaderboard as a finished, terrible score.
+  //
+  // Existing rows default to 1: everything written before this was entered in
+  // one go at the end, which is the definition of finished.
+  `
+  ALTER TABLE results ADD COLUMN completed INTEGER NOT NULL DEFAULT 1
+    CHECK (completed IN (0,1));
+  CREATE INDEX idx_results_completed ON results(workout_id, completed);
+  `,
 ];

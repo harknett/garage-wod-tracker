@@ -78,11 +78,22 @@ export function WorkoutCard({
           ) : null}
         </div>
         {result ? (
-          <span className="rounded-lg bg-lime/15 px-3 py-1 text-sm font-semibold text-lime dark:text-lime-300">
+          // A session still being logged is shown as what it is: a real score,
+          // but not a final one. Badging it like a finished result would let
+          // somebody walk away from a half-done workout thinking it was done.
+          <span
+            className={`rounded-lg px-3 py-1 text-sm font-semibold ${
+              result.completed
+                ? "bg-lime/15 text-lime dark:text-lime-300"
+                : "bg-black/10 dark:bg-white/15"
+            }`}
+          >
             {result.scoreValue === null
-              ? "Logged"
+              ? result.completed
+                ? "Logged"
+                : "In progress"
               : formatScore(scoreFromValue(result.scoreKind, result.scoreValue), unit)}
-            {result.scaled ? " (scaled)" : ""}
+            {result.completed ? (result.scaled ? " (scaled)" : "") : " · in progress"}
           </span>
         ) : null}
       </div>
@@ -113,7 +124,9 @@ export function WorkoutCard({
               href={`/log/${assignment.id}`}
               className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
             >
-              {result ? "Fix the record" : "Log it"}
+              {/* "Carry on" matters: a session part-logged and walked away
+                  from should invite you back, not look like a fresh start. */}
+              {!result ? "Log it" : result.completed ? "Fix the record" : "Carry on"}
             </Link>
           ) : (
             <span />

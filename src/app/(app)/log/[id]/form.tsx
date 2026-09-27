@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Card, Field, Notice, PageTitle, inputClass } from "@/components/ui";
 import type { FullWorkout, MovementResult, Result } from "@/lib/db/types";
@@ -11,7 +11,7 @@ import { deriveScore } from "@/lib/workout/derive";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
 import { formatScore } from "@/lib/workout/score";
 
-import { saveResult, type LogState } from "./actions";
+import { saveProgress, saveResult, type LogState, type ProgressState } from "./actions";
 
 export function LogForm({
   assignmentId,
@@ -27,6 +27,7 @@ export function LogForm({
   existing: (Result & { movements: MovementResult[] }) | null;
 }) {
   const [state, action, pending] = useActionState<LogState, FormData>(saveResult, {});
+  const [progress, saveDraft] = useActionState<ProgressState, FormData>(saveProgress, {});
   const spec = FORMAT_SPECS[workout.format];
   const byMovement = new Map(existing?.movements.map((m) => [m.movementId, m]) ?? []);
 
@@ -52,6 +53,51 @@ export function LogForm({
   function update(index: number, field: keyof (typeof logged)[number], value: string) {
     setLogged((rows) => rows.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
   }
+
+  /*
+    Save as you go.
+
+    A workout is logged between rounds, not written up afterwards, so anything
+    typed is committed shortly after it stops changing rather than waiting for
+    a button nobody presses until the end. The whole form is posted each time —
+    the result row is an upsert keyed on the assignment — which keeps the
+    autosave and the finish reading exactly the same shape.
+
+    Debounced, because the alternative is a write per keystroke; and skipped on
+    the first render, so opening a session does not immediately write a draft
+    for a workout that has not started.
+  */
+  const formRef = useRef<HTMLFormElement>(null);
+  const [dirty, setDirty] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (dirty === 0) return;
+    const form = formRef.current;
+    if (!form) return;
+
+    setSaving(true);
+    const timer = setTimeout(() => {
+      // Built from the form element rather than from state, so the fields that
+      // are not controlled — RPE, scaled, the notes — go with it.
+      saveDraft(new FormData(form));
+      setSaving(false);
+    }, 900);
+    return () => {
+      clearTimeout(timer);
+      setSaving(false);
+    };
+  }, [dirty, saveDraft]);
+
+  const savedNote = progress.error
+    ? progress.error
+    : saving
+      ? "Saving\u2026"
+      : progress.savedAt
+        ? "Saved"
+        : existing
+          ? "Picked up where you left off"
+          : "Saves as you go";
 
   const derived = useMemo(() => {
     // Parsing here is deliberately forgiving: a half-typed "1:" is not an
@@ -80,7 +126,9 @@ export function LogForm({
   }, [logged, workout.format, workout.movements, unit]);
 
   return (
-    <form action={action} className="space-y-4">
+    // Any input anywhere in the form marks it dirty, which is what drives the
+    // autosave — one handler instead of remembering to wire every field.
+    <form ref={formRef} action={action} onInput={() => setDirty((n) => n + 1)} className="space-y-4">
       <input type="hidden" name="assignmentId" value={assignmentId} />
 
       <PageTitle sub={`${date} · ${spec.label}`}>{workout.title}</PageTitle>
@@ -101,8 +149,14 @@ export function LogForm({
           </div>
           <p className="max-w-[55%] text-right text-xs opacity-60">{spec.hint}</p>
         </div>
-        <p className="mt-3 text-xs opacity-60">
-          Worked out from the movements below. Fill those in and this follows.
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-xs opacity-60">
+          <span>Worked out from the movements below. Fill those in and this follows.</span>
+          <span
+            role="status"
+            className={progress.error ? "font-medium text-rust dark:text-orange-300" : "font-medium"}
+          >
+            {savedNote}
+          </span>
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -225,13 +279,14 @@ export function LogForm({
 
       <div className="flex gap-3">
         <Button type="submit" disabled={pending} className="flex-1">
-          {pending ? "Saving…" : "Log it"}
+          {pending ? "Finishing…" : existing?.completed ? "Save changes" : "Finish session"}
         </Button>
         <Link
           href="/"
           className="inline-flex min-h-11 items-center justify-center rounded-lg border border-black/15 px-4 dark:border-white/20"
         >
-          Cancel
+          {/* Not "cancel": the work so far is already saved. */}
+          Come back later
         </Link>
       </div>
     </form>

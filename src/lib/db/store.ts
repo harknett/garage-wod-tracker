@@ -88,6 +88,7 @@ function mapResult(r: Row): Result {
     scoreValue: nnum(r.score_value),
     scoreKind: str(r.score_kind) as ScoreKind,
     scaled: bool(r.scaled),
+    completed: bool(r.completed),
     rpe: nnum(r.rpe),
     notes: str(r.notes),
     createdAt: str(r.created_at),
@@ -597,12 +598,16 @@ export class Store {
       const row = this.db
         .prepare(
           `INSERT INTO results
-             (assignment_id, user_id, workout_id, date, score_value, score_kind, scaled, rpe, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             (assignment_id, user_id, workout_id, date, score_value, score_kind, scaled,
+              completed, rpe, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(assignment_id) DO UPDATE SET
              score_value = excluded.score_value,
              score_kind  = excluded.score_kind,
              scaled      = excluded.scaled,
+             -- Finishing sticks. An autosave that lands after the athlete has
+             -- already pressed done must not quietly reopen the session.
+             completed   = MAX(results.completed, excluded.completed),
              rpe         = excluded.rpe,
              notes       = excluded.notes
            RETURNING id`,
@@ -615,6 +620,7 @@ export class Store {
           input.scoreValue,
           input.scoreKind,
           input.scaled ? 1 : 0,
+          input.completed ? 1 : 0,
           input.rpe,
           input.notes,
         ) as Row;
@@ -684,7 +690,11 @@ export class Store {
   // --- leaderboard and analytics -------------------------------------------
 
   /**
-   * Everyone who has logged this workout.
+   * Everyone who has finished this workout.
+   *
+   * Drafts are excluded. A session still being logged has a real score — just
+   * not a final one — and putting it on the board would rank somebody on the
+   * two movements they have got through so far.
    *
    * Ordering is left to the caller: only the format knows whether a smaller
    * number is a better one, and the format is not a column on this join.
@@ -695,7 +705,7 @@ export class Store {
         .prepare(
           `SELECT r.user_id, u.name, r.score_value, r.scaled, r.date
            FROM results r JOIN users u ON u.id = r.user_id
-           WHERE r.workout_id = ?`,
+           WHERE r.workout_id = ? AND r.completed = 1`,
         )
         .all(workoutId) as Row[]
     ).map((r) => ({
@@ -713,7 +723,7 @@ export class Store {
       this.db
         .prepare(
           `SELECT w.*, COUNT(r.id) AS entries
-           FROM workouts w JOIN results r ON r.workout_id = w.id
+           FROM workouts w JOIN results r ON r.workout_id = w.id AND r.completed = 1
            GROUP BY w.id HAVING COUNT(DISTINCT r.user_id) > 1
            ORDER BY MAX(r.date) DESC LIMIT ?`,
         )
@@ -731,7 +741,7 @@ export class Store {
         .prepare(
           `SELECT r.*, w.title, w.format, w.track
            FROM results r JOIN workouts w ON w.id = r.workout_id
-           WHERE r.user_id = ? AND r.date >= ?
+           WHERE r.user_id = ? AND r.date >= ? AND r.completed = 1
            ORDER BY r.date DESC, r.id DESC`,
         )
         .all(userId, since) as Row[]
@@ -751,7 +761,7 @@ export class Store {
           `SELECT strftime('%Y-W%W', date) AS week,
                   COUNT(*) AS sessions,
                   AVG(rpe) AS avg_rpe
-           FROM results WHERE user_id = ? AND date >= ?
+           FROM results WHERE user_id = ? AND date >= ? AND completed = 1
            GROUP BY week ORDER BY week`,
         )
         .all(userId, since) as Row[]
@@ -771,7 +781,7 @@ export class Store {
            FROM movement_results mr
            JOIN movements m ON m.id = mr.movement_id
            JOIN results r ON r.id = mr.result_id
-           WHERE r.user_id = ? AND mr.load_g IS NOT NULL AND mr.load_g > 0
+           WHERE r.user_id = ? AND r.completed = 1 AND mr.load_g IS NOT NULL AND mr.load_g > 0
            GROUP BY m.name ORDER BY load_g DESC LIMIT ?`,
         )
         .all(userId, limit) as Row[]
@@ -785,7 +795,7 @@ export class Store {
         .prepare(
           `SELECT w.format, COUNT(*) AS sessions
            FROM results r JOIN workouts w ON w.id = r.workout_id
-           WHERE r.user_id = ? AND r.date >= ?
+           WHERE r.user_id = ? AND r.date >= ? AND r.completed = 1
            GROUP BY w.format ORDER BY sessions DESC`,
         )
         .all(userId, since) as Row[]
