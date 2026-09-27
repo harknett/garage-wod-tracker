@@ -590,7 +590,7 @@ describe("moving a session", () => {
     expect(store.moveAssignment(first!.assignment.id, "2026-09-24", actor(coach))).toBe(false);
   });
 
-  it("still will not let an owner delete an athlete's logged training", () => {
+  it("lets an owner drop a session from an athlete's week", () => {
     const alex = makeUser("Alex", "alex@example.com");
     const coach = store.createUser({
       email: "coach@example.com",
@@ -606,9 +606,20 @@ describe("moving a session", () => {
     store.assign(workoutId, alex.id, "2026-09-21");
     const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
 
-    // Rearranging a week is coaching; deleting what somebody already did is
-    // not, and removal cascades to the result they earned.
-    expect(store.deleteAssignment(entry!.assignment.id, coach.id)).toBe(false);
+    // A coach who can rearrange a week should not have to ask somebody else to
+    // drop a session from it.
+    expect(store.deleteAssignment(entry!.assignment.id, actor(coach))).toBe(true);
+    expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(0);
+  });
+
+  it("still will not let one athlete remove another's session", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const workoutId = makeWorkout();
+    store.assign(workoutId, alex.id, "2026-09-21");
+    const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
+
+    expect(store.deleteAssignment(entry!.assignment.id, actor(sam))).toBe(false);
     expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
   });
 });
@@ -719,7 +730,7 @@ describe("removing a session from a week", () => {
   it("takes the session off the week", () => {
     const user = makeUser("Alex", "alex@example.com");
     const id = assignTo(user.id, makeWorkout());
-    expect(store.deleteAssignment(id, user.id)).toBe(true);
+    expect(store.deleteAssignment(id, actor(user))).toBe(true);
     expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(0);
   });
 
@@ -730,7 +741,7 @@ describe("removing a session from a week", () => {
     const alexId = assignTo(alex.id, workoutId);
     assignTo(sam.id, workoutId);
 
-    store.deleteAssignment(alexId, alex.id);
+    store.deleteAssignment(alexId, actor(alex));
 
     expect(store.getWorkout(workoutId)).toBeDefined();
     expect(store.entriesBetween(sam.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
@@ -755,7 +766,7 @@ describe("removing a session from a week", () => {
 
     // results cascade from the assignment, so this is the one action in the
     // app that destroys training history. The UI asks twice for that reason.
-    store.deleteAssignment(id, user.id);
+    store.deleteAssignment(id, actor(user));
     expect(store.resultsSince(user.id, "2026-01-01")).toHaveLength(0);
   });
 
@@ -764,16 +775,16 @@ describe("removing a session from a week", () => {
     const sam = makeUser("Sam", "sam@example.com");
     const id = assignTo(alex.id, makeWorkout());
 
-    expect(store.deleteAssignment(id, sam.id)).toBe(false);
+    expect(store.deleteAssignment(id, actor(sam))).toBe(false);
     expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
   });
 
   it("reports honestly when the session is already gone", () => {
     const user = makeUser("Alex", "alex@example.com");
     const id = assignTo(user.id, makeWorkout());
-    expect(store.deleteAssignment(id, user.id)).toBe(true);
+    expect(store.deleteAssignment(id, actor(user))).toBe(true);
     // A stale link posted twice should say so rather than silently succeed.
-    expect(store.deleteAssignment(id, user.id)).toBe(false);
+    expect(store.deleteAssignment(id, actor(user))).toBe(false);
   });
 });
 
@@ -827,7 +838,7 @@ describe("weeks written in one go", () => {
     // Remove one from the week: the group must stop claiming a session that
     // is no longer there.
     const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
-    store.deleteAssignment(entry!.assignment.id, user.id);
+    store.deleteAssignment(entry!.assignment.id, actor(user));
     store.deleteWorkout(entry!.workout.id);
     expect(store.findPlan(planId)!.sessions).toBe(2);
   });

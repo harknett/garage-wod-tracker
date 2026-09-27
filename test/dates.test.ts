@@ -20,18 +20,21 @@ describe("dates", () => {
     expect(isValidDate("2026-02-29")).toBe(false);
   });
 
-  it("starts the week on Monday", () => {
-    // 2026-09-21 is a Monday.
-    expect(weekStart("2026-09-21")).toBe("2026-09-21");
-    expect(weekStart("2026-09-25")).toBe("2026-09-21");
-    // Sunday belongs to the week that began six days earlier, not the next one.
-    expect(weekStart("2026-09-27")).toBe("2026-09-21");
-    expect(weekStart("2026-09-28")).toBe("2026-09-28");
+  it("starts the week on Sunday", () => {
+    // 2026-09-20 is a Sunday; 2026-09-21 the Monday after it.
+    expect(weekStart("2026-09-20")).toBe("2026-09-20");
+    expect(weekStart("2026-09-21")).toBe("2026-09-20");
+    expect(weekStart("2026-09-25")).toBe("2026-09-20");
+    // Saturday closes the week that began six days earlier.
+    expect(weekStart("2026-09-26")).toBe("2026-09-20");
+    // And the next Sunday opens a new one rather than closing the old.
+    expect(weekStart("2026-09-27")).toBe("2026-09-27");
   });
 
   it("names the day", () => {
+    expect(dayName("2026-09-20")).toBe("Sunday");
     expect(dayName("2026-09-21")).toBe("Monday");
-    expect(dayName("2026-09-27")).toBe("Sunday");
+    expect(dayName("2026-09-26")).toBe("Saturday");
   });
 
   it("rejects malformed input", () => {

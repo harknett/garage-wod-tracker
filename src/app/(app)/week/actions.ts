@@ -39,13 +39,13 @@ export interface RemoveState {
 }
 
 /**
- * Take a session out of your own week.
+ * Take a session out of a week.
  *
- * This is the one action in the app that destroys training history: results
- * are keyed on the assignment and cascade with it. The screen asks twice
- * before calling this, and the ownership check lives in the store, so a
- * posted id belonging to somebody else fails there rather than depending on
- * this action remembering to look.
+ * An athlete may drop their own; an owner may drop anybody's. This is the one
+ * action in the app that destroys training history — results are keyed on the
+ * assignment and cascade with it — so the screen asks twice before calling it,
+ * and the rule lives in the store rather than depending on this action
+ * remembering to look.
  */
 export async function removeWorkout(
   _prev: RemoveState,
@@ -56,8 +56,8 @@ export async function removeWorkout(
   const id = Number(data.get("assignmentId"));
   if (!Number.isInteger(id)) return { error: "That is not a session." };
 
-  if (!getStore().deleteAssignment(id, user.id)) {
-    return { error: "That session is not yours, or is already gone." };
+  if (!getStore().deleteAssignment(id, { id: user.id, role: user.role })) {
+    return { error: "That session is not yours to remove, or is already gone." };
   }
 
   revalidatePath("/");

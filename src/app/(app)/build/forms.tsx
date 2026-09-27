@@ -114,7 +114,7 @@ function AiForm({
               ))}
             </select>
           </Field>
-          <Field label="Week beginning" hint="Snapped to the Monday.">
+          <Field label="Week beginning" hint="Snapped to the Sunday the week starts on.">
             <input name="start" type="date" defaultValue={weekStart} className={inputClass} />
           </Field>
           <Field label="Sessions" hint={`${trackLength(track)} each`}>

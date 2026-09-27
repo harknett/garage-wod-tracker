@@ -514,25 +514,26 @@ export class Store {
   }
 
   /**
-   * Take a session out of your own week.
+   * Take a session out of a week.
    *
-   * Deliberately narrower than `moveAssignment`: an owner may rearrange an
-   * athlete's week, but not delete training they have already done. Removal
-   * cascades to the logged result, and that record belongs to the person who
-   * earned it.
+   * The actor is either the athlete whose week it is, or an owner — the same
+   * rule as `moveAssignment`, because a coach who can rearrange a week should
+   * not have to ask somebody else to drop a session from it.
    *
    * The workout itself survives: it may be on other athletes' weeks, and the
    * assignment is only the link. The logged result does not — `results` is
-   * keyed on the assignment and cascades — so this is the one action in the app
-   * that destroys training history, and the screen asks twice before it fires.
+   * keyed on the assignment and cascades — so this is the one action in the
+   * app that destroys training history, and every screen that calls it asks
+   * twice and names what goes with it.
    *
    * Returns whether anything was removed, so a stale link posted twice reports
    * honestly instead of silently doing nothing.
    */
-  deleteAssignment(id: number, userId: number): boolean {
+  deleteAssignment(id: number, actor: { id: number; role: Role }): boolean {
     const assignment = this.findAssignment(id);
-    if (!assignment || assignment.userId !== userId) return false;
-    this.db.prepare("DELETE FROM assignments WHERE id = ? AND user_id = ?").run(id, userId);
+    if (!assignment) return false;
+    if (assignment.userId !== actor.id && actor.role !== "owner") return false;
+    this.db.prepare("DELETE FROM assignments WHERE id = ?").run(id);
     return true;
   }
 

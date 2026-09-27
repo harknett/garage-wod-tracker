@@ -38,12 +38,14 @@ someone is reading them mid-session with chalk on their hands.
   place the model's week summary survives. `workouts.plan_id` is
   `ON DELETE SET NULL`: a workout somebody has already done outlives the week
   it was planned in.
-- **An owner may rearrange an athlete's week, but not erase it.**
-  `moveAssignment` takes an actor and accepts the athlete or any owner;
-  `deleteAssignment` is athlete-only, because removal cascades to the logged
-  result and that record belongs to whoever earned it. The card takes three
-  separate permissions (`canLog`, `canMove`, `canRemove`) rather than one
-  read-only flag, since a coach sits between the two.
+- **An owner may rearrange and prune an athlete's week; only the athlete logs
+  it.** `moveAssignment` and `deleteAssignment` both take an actor and accept
+  the athlete or any owner. The card takes three separate permissions
+  (`canLog`, `canMove`, `canRemove`) rather than one read-only flag, since a
+  coach sits between the two states.
+- **Weeks run Sunday to Saturday.** `weekStart` returns the Sunday on or
+  before a date, and `DAY_NAMES` is Sunday-first to match `getDay()`. Changing
+  this moves every planner view and the date the planner snaps to.
 - **Only an owner can view another athlete**, the subject comes from
   `?athlete=`, and the store's checks are the real boundary — the page hiding
   buttons is a courtesy, not the enforcement.
