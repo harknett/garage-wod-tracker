@@ -1,6 +1,7 @@
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
 import type { Phase } from "@/lib/workout/phases";
+import type { Track } from "@/lib/workout/tracks";
 
 export type Role = "owner" | "member";
 export type Source = "manual" | "ai";
@@ -13,6 +14,8 @@ export interface User {
   unit: Unit;
   /** Where this athlete is in their training. Steers every generated week. */
   phase: Phase;
+  /** The shape of their week: how often they train, and for how long. */
+  track: Track;
   mustChangePassword: boolean;
   createdAt: string;
 }
@@ -39,6 +42,8 @@ export interface Workout {
   source: Source;
   /** The phase this was written under. Null for anything predating phases. */
   phase: Phase | null;
+  /** The track this was written for. Null for anything predating tracks. */
+  track: Track | null;
   createdBy: number | null;
   createdAt: string;
 }
@@ -121,6 +126,7 @@ export interface NewWorkout {
   capSeconds: number | null;
   source: Source;
   phase: Phase | null;
+  track: Track | null;
   createdBy: number | null;
   movements: NewMovement[];
 }

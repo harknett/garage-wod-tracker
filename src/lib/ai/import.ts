@@ -5,6 +5,7 @@ import type { NewMovement } from "@/lib/db/types";
 import { addDays } from "@/lib/dates";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
 import type { Phase } from "@/lib/workout/phases";
+import type { Track } from "@/lib/workout/tracks";
 
 import type { GeneratedWeek } from "./schema";
 
@@ -24,6 +25,7 @@ export function importWeek(
   userId: number,
   startDate: string,
   phase: Phase,
+  track: Track,
 ): number[] {
   const store = getStore();
 
@@ -51,6 +53,9 @@ export function importWeek(
         // out of the model: the phase is an input, and a model that renamed it
         // would quietly rewrite the record of what was asked for.
         phase,
+        // Stamped from the track the week was written for. A session keeps the
+        // shape it was designed as, whatever the athlete switches to later.
+        track,
         createdBy: userId,
         movements,
       });

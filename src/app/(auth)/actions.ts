@@ -13,6 +13,7 @@ import {
 import { getStore } from "@/lib/db";
 import { isUnit } from "@/lib/units";
 import { isPhase } from "@/lib/workout/phases";
+import { isTrack } from "@/lib/workout/tracks";
 
 export interface FormState {
   error?: string;
@@ -78,9 +79,11 @@ export async function claimOwner(_prev: FormState, data: FormData): Promise<Form
   const password = String(data.get("password") ?? "");
   const unitRaw = String(data.get("unit") ?? "kg");
   const phaseRaw = String(data.get("phase") ?? "ramping");
+  const trackRaw = String(data.get("track") ?? "long");
   if (!email || !name) return { error: "Enter your name and email." };
   if (!isUnit(unitRaw)) return { error: "Pick kilograms or pounds." };
   if (!isPhase(phaseRaw)) return { error: "Pick a training phase." };
+  if (!isTrack(trackRaw)) return { error: "Pick a track." };
 
   try {
     validatePassword(password);
@@ -95,6 +98,7 @@ export async function claimOwner(_prev: FormState, data: FormData): Promise<Form
     role: "owner",
     unit: unitRaw,
     phase: phaseRaw,
+    track: trackRaw,
     mustChangePassword: false,
   });
   await startSession(user.id);

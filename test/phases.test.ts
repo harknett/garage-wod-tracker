@@ -105,13 +105,14 @@ describe("importWeek", () => {
       role: "owner",
       unit: "kg",
       phase: "building",
+      track: "long",
       mustChangePassword: false,
     });
   }
 
   it("stamps every imported workout with the phase it was written under", () => {
     const user = makeAthlete();
-    const ids = importWeek(week, user.id, "2026-09-21", "building");
+    const ids = importWeek(week, user.id, "2026-09-21", "building", "long");
 
     expect(ids).toHaveLength(2);
     for (const id of ids) {
@@ -123,7 +124,7 @@ describe("importWeek", () => {
   it("stamps the phase it was given, not the athlete's standing one", () => {
     // The coach can write one week off-phase without moving the athlete.
     const user = makeAthlete();
-    const [id] = importWeek(week, user.id, "2026-09-21", "ramping");
+    const [id] = importWeek(week, user.id, "2026-09-21", "ramping", "long");
 
     expect(getStore().getWorkout(id!)!.phase).toBe("ramping");
     expect(getStore().findUser(user.id)!.phase).toBe("building");
@@ -131,13 +132,13 @@ describe("importWeek", () => {
 
   it("converts prescribed kilograms into stored grams", () => {
     const user = makeAthlete();
-    const [id] = importWeek(week, user.id, "2026-09-21", "building");
+    const [id] = importWeek(week, user.id, "2026-09-21", "building", "long");
     expect(getStore().getWorkout(id!)!.movements[0]!.loadG).toBe(102_500);
   });
 
   it("lands each workout on its own day, offset from the start", () => {
     const user = makeAthlete();
-    importWeek(week, user.id, "2026-09-21", "building");
+    importWeek(week, user.id, "2026-09-21", "building", "long");
 
     const entries = getStore().entriesBetween(user.id, "2026-09-21", "2026-09-27");
     expect(entries.map((e) => e.assignment.date)).toEqual(["2026-09-21", "2026-09-23"]);
@@ -145,7 +146,7 @@ describe("importWeek", () => {
 
   it("drops a cap the format cannot carry", () => {
     const user = makeAthlete();
-    const ids = importWeek(week, user.id, "2026-09-21", "building");
+    const ids = importWeek(week, user.id, "2026-09-21", "building", "long");
     const [strength, amrap] = ids.map((id) => getStore().getWorkout(id)!);
 
     // A cap on a strength day is the model being tidy, not a real constraint.

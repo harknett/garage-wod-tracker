@@ -7,6 +7,7 @@ import type { Unit } from "@/lib/units";
 import { formatDuration, formatLoad } from "@/lib/units";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
 import { PHASE_SPECS } from "@/lib/workout/phases";
+import { trackLength } from "@/lib/workout/tracks";
 import { formatScore, scoreFromValue } from "@/lib/workout/score";
 
 /** The prescription for one movement, rendered the way it is written down. */
@@ -46,6 +47,9 @@ export function WorkoutCard({
             {spec.label}
             {workout.capSeconds ? ` · ${formatDuration(workout.capSeconds)} cap` : ""}
             {workout.source === "ai" ? " · written by AI" : ""}
+            {/* The length it was written to fit, which is the thing an athlete
+                most needs to know before starting it. */}
+            {workout.track ? ` · ${trackLength(workout.track)}` : ""}
           </p>
           {/* The phase it was written under, which is not necessarily the
               phase the athlete is in now. */}

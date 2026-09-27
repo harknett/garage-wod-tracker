@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
 import type { Phase } from "@/lib/workout/phases";
+import type { Track } from "@/lib/workout/tracks";
 
 import { MIGRATIONS } from "./migrations";
 import type {
@@ -38,6 +39,7 @@ function mapUser(r: Row): User {
     role: str(r.role) as Role,
     unit: str(r.unit) as Unit,
     phase: str(r.phase) as Phase,
+    track: str(r.track) as Track,
     mustChangePassword: bool(r.must_change_password),
     createdAt: str(r.created_at),
   };
@@ -52,6 +54,7 @@ function mapWorkout(r: Row): Workout {
     capSeconds: nnum(r.cap_seconds),
     source: str(r.source) as Source,
     phase: r.phase == null ? null : (str(r.phase) as Phase),
+    track: r.track == null ? null : (str(r.track) as Track),
     createdBy: nnum(r.created_by),
     createdAt: str(r.created_at),
   };
@@ -196,12 +199,13 @@ export class Store {
     role: Role;
     unit: Unit;
     phase: Phase;
+    track: Track;
     mustChangePassword: boolean;
   }): User {
     const row = this.db
       .prepare(
-        `INSERT INTO users (email, name, password_hash, role, unit, phase, must_change_password)
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+        `INSERT INTO users (email, name, password_hash, role, unit, phase, track, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
       )
       .get(
         input.email.trim().toLowerCase(),
@@ -210,6 +214,7 @@ export class Store {
         input.role,
         input.unit,
         input.phase,
+        input.track,
         input.mustChangePassword ? 1 : 0,
       ) as Row;
     return mapUser(row);
@@ -249,6 +254,17 @@ export class Store {
    */
   setPhase(userId: number, phase: Phase): void {
     this.db.prepare("UPDATE users SET phase = ? WHERE id = ?").run(phase, userId);
+  }
+
+  /**
+   * Put an athlete on a different track.
+   *
+   * Takes effect on the next week written. Sessions already on the board keep
+   * the track they were written for — a 12-minute session does not become a
+   * 40-minute one because its athlete changed their mind.
+   */
+  setTrack(userId: number, track: Track): void {
+    this.db.prepare("UPDATE users SET track = ? WHERE id = ?").run(track, userId);
   }
 
   setName(userId: number, name: string): void {
@@ -337,8 +353,8 @@ export class Store {
     return this.transaction(() => {
       const row = this.db
         .prepare(
-          `INSERT INTO workouts (title, format, description, cap_seconds, source, phase, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO workouts (title, format, description, cap_seconds, source, phase, track, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         )
         .get(
           input.title.trim(),
@@ -347,6 +363,7 @@ export class Store {
           input.capSeconds,
           input.source,
           input.phase,
+          input.track,
           input.createdBy,
         ) as Row;
       const workoutId = num(row.id);
@@ -632,17 +649,25 @@ export class Store {
   }
 
   /** Every result an athlete has logged since a date, newest first. */
-  resultsSince(userId: number, since: string): Array<Result & { title: string; format: Format }> {
+  resultsSince(
+    userId: number,
+    since: string,
+  ): Array<Result & { title: string; format: Format; track: Track | null }> {
     return (
       this.db
         .prepare(
-          `SELECT r.*, w.title, w.format
+          `SELECT r.*, w.title, w.format, w.track
            FROM results r JOIN workouts w ON w.id = r.workout_id
            WHERE r.user_id = ? AND r.date >= ?
            ORDER BY r.date DESC, r.id DESC`,
         )
         .all(userId, since) as Row[]
-    ).map((r) => ({ ...mapResult(r), title: str(r.title), format: str(r.format) as Format }));
+    ).map((r) => ({
+      ...mapResult(r),
+      title: str(r.title),
+      format: str(r.format) as Format,
+      track: r.track == null ? null : (str(r.track) as Track),
+    }));
   }
 
   /** Sessions logged per ISO week, for the training-consistency chart. */

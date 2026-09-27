@@ -17,7 +17,7 @@ export default async function BuildPage() {
     <>
       <PageTitle sub="Write the week. Then go do it.">Build</PageTitle>
       <BuildForms
-        athletes={athletes.map((a) => ({ id: a.id, name: a.name, phase: a.phase }))}
+        athletes={athletes.map((a) => ({ id: a.id, name: a.name, phase: a.phase, track: a.track }))}
         defaultAthleteId={owner.id}
         weekStart={weekStart(today())}
         today={today()}

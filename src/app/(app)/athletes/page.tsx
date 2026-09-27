@@ -23,6 +23,7 @@ export default async function AthletesPage() {
           role: a.role,
           unit: a.unit,
           phase: a.phase,
+          track: a.track,
           mustChangePassword: a.mustChangePassword,
         }))}
       />

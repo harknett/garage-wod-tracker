@@ -11,6 +11,7 @@ phone. Next.js, SQLite, no account anywhere else.
 | | |
 | --- | --- |
 | **Programming** | Every common format — for time, AMRAP, EMOM, death by, sets and reps, tabata, chipper, ladder, intervals, strength, skill — each with its own scoring rule. |
+| **Tracks** | Two shapes of week: three long sessions (30–45 min) or six short ones (10–15 min). The athlete picks theirs; the coach picks which track a generated week is written for. |
 | **Training phases** | Every athlete is *ramping*, *conditioning*, *leaning* or *building*. The phase is the frame the whole week is written inside, and each session is stamped with the phase it was written under. |
 | **AI weeks** | Claude writes a cohesive week against the athlete's phase, their last eight weeks of logged results, their RPE and notes, and the gym's equipment list. |
 | **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
@@ -67,6 +68,23 @@ for the shared-host port table, the systemd unit, TLS, upgrades and backups.
 | `test/` | Vitest specs, `*.test.ts`, run in `node` against real SQLite files. |
 | `deploy/` | systemd unit and the deployment, upgrade and backup guide. |
 | `data/` | The SQLite database. Gitignored, never in a build. |
+
+## Tracks
+
+| Track | Means |
+| --- | --- |
+| **Three long sessions** | 3 a week, 30–45 minutes. Room for a warm-up, a strength or skill piece, conditioning and a cool-down in one go, so each session has to be broad. |
+| **Six short sessions** | 6 a week, 10–15 minutes. One focused piece a day, mobility folded into the work rather than added on, intensity held to something recoverable by tomorrow. |
+
+A track is not a difficulty setting — it is how the week is divided up, and
+three 40-minute sessions and six 12-minute ones need different structures
+rather than the same week at different volumes.
+
+Athletes choose their own track in **Settings**; the owner can override it on
+**Athletes**, or write a single week on the other track from **Build** without
+moving anyone onto it. Choosing a track sets the session count the planner
+offers. A session keeps the track it was written for, so switching does not
+retroactively turn a 40-minute piece into a 12-minute one.
 
 ## Phases
 

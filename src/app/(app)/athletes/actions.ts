@@ -10,6 +10,7 @@ import {
 import { getStore } from "@/lib/db";
 import { isUnit } from "@/lib/units";
 import { PHASE_SPECS, isPhase } from "@/lib/workout/phases";
+import { TRACK_SPECS, isTrack } from "@/lib/workout/tracks";
 
 export interface AthleteState {
   error?: string;
@@ -32,11 +33,13 @@ export async function addAthlete(_prev: AthleteState, data: FormData): Promise<A
   const email = String(data.get("email") ?? "").trim().toLowerCase();
   const unit = String(data.get("unit") ?? "kg");
   const phase = String(data.get("phase") ?? "ramping");
+  const track = String(data.get("track") ?? "long");
   const role = data.get("role") === "owner" ? "owner" : "member";
 
   if (!name || !email) return { error: "A name and an email are needed." };
   if (!isUnit(unit)) return { error: "Pick kilograms or pounds." };
   if (!isPhase(phase)) return { error: "Pick a training phase." };
+  if (!isTrack(track)) return { error: "Pick a track." };
   if (store.findUserByEmail(email)) return { error: "That email already has an account." };
 
   const temporary = generateTemporaryPassword();
@@ -47,6 +50,7 @@ export async function addAthlete(_prev: AthleteState, data: FormData): Promise<A
     role,
     unit,
     phase,
+    track,
     mustChangePassword: true,
   });
 
@@ -114,4 +118,22 @@ export async function setPhase(_prev: AthleteState, data: FormData): Promise<Ath
   revalidatePath("/athletes");
   revalidatePath("/build");
   return { ok: `${athlete.name} is ${PHASE_SPECS[phase].label.toLowerCase()}. Next week reflects it.` };
+}
+
+/** Move an athlete onto a different track. Owners may do this for anyone. */
+export async function setTrack(_prev: AthleteState, data: FormData): Promise<AthleteState> {
+  await requireOwner();
+  const store = getStore();
+
+  const id = Number(data.get("id"));
+  const track = String(data.get("track") ?? "");
+  if (!isTrack(track)) return { error: "Pick a track." };
+
+  const athlete = store.findUser(id);
+  if (!athlete) return { error: "No such athlete." };
+
+  store.setTrack(id, track);
+  revalidatePath("/athletes");
+  revalidatePath("/build");
+  return { ok: `${athlete.name}: ${TRACK_SPECS[track].label.toLowerCase()}.` };
 }

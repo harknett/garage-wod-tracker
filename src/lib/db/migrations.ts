@@ -175,4 +175,17 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workouts DROP COLUMN phase;
   ALTER TABLE workouts RENAME COLUMN phase_new TO phase;
   `,
+
+  // Programming tracks: how many times a week an athlete trains and for how
+  // long. Existing accounts default to the long track, which is the shape the
+  // app has effectively been writing all along.
+  `
+  ALTER TABLE users ADD COLUMN track TEXT NOT NULL DEFAULT 'long'
+    CHECK (track IN ('long','short'));
+
+  -- The track a workout was written for, stamped at creation. Nullable,
+  -- because everything written before tracks existed belongs to none.
+  ALTER TABLE workouts ADD COLUMN track TEXT
+    CHECK (track IS NULL OR track IN ('long','short'));
+  `,
 ];

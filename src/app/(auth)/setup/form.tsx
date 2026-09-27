@@ -6,6 +6,7 @@ import { claimOwner, type FormState } from "../actions";
 import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
+import { TRACKS, TRACK_SPECS } from "@/lib/workout/tracks";
 
 export function SetupForm({ configured }: { configured: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(claimOwner, {});
@@ -55,6 +56,15 @@ export function SetupForm({ configured }: { configured: boolean }) {
               {PHASES.map((p) => (
                 <option key={p} value={p}>
                   {PHASE_SPECS[p].label}
+                </option>
+              ))}
+            </select>
+        </Field>
+        <Field label="How will you train" hint={TRACK_SPECS.long.summary}>
+            <select name="track" defaultValue="long" className={inputClass}>
+              {TRACKS.map((t) => (
+                <option key={t} value={t}>
+                  {TRACK_SPECS[t].label}
                 </option>
               ))}
             </select>

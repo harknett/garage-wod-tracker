@@ -36,6 +36,12 @@ someone is reading them mid-session with chalk on their hands.
 - **Loads are whole grams, durations are seconds.** Kilograms and pounds are
   renderings. Convert at the boundary — form input and AI import — and nowhere
   else.
+- **A track decides the shape of the week.** `TRACK_SPECS[track].brief` goes
+  to the model ahead of the phase, because a session written for 40 minutes is
+  simply wrong in a 12-minute slot. `sessions` is the same number the planner
+  defaults the day count to — keep the brief's wording and that figure in step.
+- **A workout keeps the track it was written for**, exactly like its phase.
+  `users.track` is intent; `workouts.track` is history.
 - **A phase is not a label — it changes the week.** `PHASE_SPECS[phase].brief`
   is the instruction the model actually receives, and it outranks the coach's
   brief. Keep `summary` (on screen) and `brief` (to the model) saying the same

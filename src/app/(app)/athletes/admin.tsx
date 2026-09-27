@@ -7,12 +7,15 @@ import type { Role } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
 import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
 import type { Phase } from "@/lib/workout/phases";
+import { TRACKS, TRACK_SPECS } from "@/lib/workout/tracks";
+import type { Track } from "@/lib/workout/tracks";
 
 import {
   addAthlete,
   removeAthlete,
   resetPassword,
   setPhase,
+  setTrack,
   type AthleteState,
 } from "./actions";
 
@@ -23,6 +26,7 @@ interface Row {
   role: Role;
   unit: Unit;
   phase: Phase;
+  track: Track;
   mustChangePassword: boolean;
 }
 
@@ -45,6 +49,7 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
   const [resetState, reset] = useActionState<AthleteState, FormData>(resetPassword, {});
   const [removeState, remove] = useActionState<AthleteState, FormData>(removeAthlete, {});
   const [phaseState, movePhase] = useActionState<AthleteState, FormData>(setPhase, {});
+  const [trackState, moveTrack] = useActionState<AthleteState, FormData>(setTrack, {});
 
   return (
     <div className="space-y-4">
@@ -75,6 +80,15 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
               ))}
             </select>
             </Field>
+            <Field label="Track" hint={TRACK_SPECS.long.summary}>
+            <select name="track" defaultValue="long" className={inputClass}>
+              {TRACKS.map((t) => (
+                <option key={t} value={t}>
+                  {TRACK_SPECS[t].label}
+                </option>
+              ))}
+            </select>
+            </Field>
             <Field label="Role" hint="Owners can write workouts and manage accounts.">
               <select name="role" defaultValue="member" className={inputClass}>
                 <option value="member">Member</option>
@@ -93,8 +107,12 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
 
       <Card>
         <h2 className="mb-3 font-semibold">Everyone</h2>
-        <Notice kind="error">{resetState.error ?? removeState.error ?? phaseState.error}</Notice>
-        <Notice kind="ok">{resetState.ok ?? removeState.ok ?? phaseState.ok}</Notice>
+        <Notice kind="error">
+          {resetState.error ?? removeState.error ?? phaseState.error ?? trackState.error}
+        </Notice>
+        <Notice kind="ok">
+          {resetState.ok ?? removeState.ok ?? phaseState.ok ?? trackState.ok}
+        </Notice>
         <div className="mt-2">
           <TemporaryPassword value={resetState.password} />
         </div>
@@ -117,7 +135,8 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
                   ) : null}
                 </p>
                 <p className="truncate text-xs opacity-60">
-                  {a.email} · {a.unit} · {PHASE_SPECS[a.phase].label.toLowerCase()}
+                  {a.email} · {a.unit} · {PHASE_SPECS[a.phase].label.toLowerCase()} ·{" "}
+                  {TRACK_SPECS[a.track].label.toLowerCase()}
                 </p>
               </div>
 
@@ -145,6 +164,23 @@ export function AthleteAdmin({ ownerId, athletes }: { ownerId: number; athletes:
                 <Button variant="quiet" type="submit" className="text-sm">
                   Reset password
                 </Button>
+              </form>
+
+              <form action={moveTrack}>
+                <input type="hidden" name="id" value={a.id} />
+                <select
+                  name="track"
+                  defaultValue={a.track}
+                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  aria-label={`Track for ${a.name}`}
+                  className="min-h-11 rounded-lg border border-black/15 bg-white px-3 text-sm dark:border-white/20 dark:bg-iron dark:text-chalk"
+                >
+                  {TRACKS.map((t) => (
+                    <option key={t} value={t}>
+                      {TRACK_SPECS[t].label}
+                    </option>
+                  ))}
+                </select>
               </form>
 
               {a.id === ownerId ? null : (

@@ -8,6 +8,8 @@ import type { User } from "@/lib/db/types";
 import { equipmentContext, trainingContext } from "./context";
 import { PHASE_SPECS } from "@/lib/workout/phases";
 import type { Phase } from "@/lib/workout/phases";
+import { TRACK_SPECS } from "@/lib/workout/tracks";
+import type { Track } from "@/lib/workout/tracks";
 import { GeneratedWeek } from "./schema";
 
 /**
@@ -43,6 +45,10 @@ Hold to these:
 - **Progress off what is written down.** The history you are given is the whole
   basis for load and volume. If a movement has a recorded best, prescribe
   against it; if it does not, prescribe conservatively and say so in the notes.
+- **Respect the track.** How many sessions there are, and how long each one
+  has, is fixed before you start. Fitting a session into its slot is not a
+  detail to trade away for a better workout — a 40-minute piece in a 12-minute
+  track simply does not get done.
 - **A week is one thing, not seven.** Order the days so hard sessions have easy
   ones after them, no two consecutive days hammer the same pattern, and the
   week has at least one genuinely light or mobility-led day.
@@ -70,6 +76,8 @@ export interface GenerateOptions {
   athlete: User;
   /** The phase this week is written under. Steers volume, load and intensity. */
   phase: Phase;
+  /** The track: how many sessions, and how long each one has. */
+  track: Track;
 }
 
 export async function generateWeek(options: GenerateOptions): Promise<GeneratedWeek> {
@@ -94,6 +102,15 @@ export async function generateWeek(options: GenerateOptions): Promise<GeneratedW
         role: "user",
         content: [
           `Write ${options.days} day(s) of training for ${options.athlete.name}.`,
+          "",
+          "--- track ---",
+          // The track comes first: it decides the shape of the week, and the
+          // phase and the coach's brief are both read inside that shape. A
+          // session written for 40 minutes is simply wrong in a 12-minute slot.
+          TRACK_SPECS[options.track].brief,
+          "",
+          "Every session you write must fit its track's length, warm-up and",
+          "cool-down included. Say the intended duration in each description.",
           "",
           "--- training phase ---",
           // The phase outranks the coach's brief and the history: it is the

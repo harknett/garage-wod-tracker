@@ -6,6 +6,8 @@ import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import type { Unit } from "@/lib/units";
 import { FORMATS, FORMAT_SPECS } from "@/lib/workout/formats";
 import { PHASES, PHASE_SPECS } from "@/lib/workout/phases";
+import { TRACKS, TRACK_SPECS, trackLength } from "@/lib/workout/tracks";
+import type { Track } from "@/lib/workout/tracks";
 import type { Phase } from "@/lib/workout/phases";
 
 import { createManual, generate, type BuildState } from "./actions";
@@ -14,6 +16,7 @@ interface Athlete {
   id: number;
   name: string;
   phase: Phase;
+  track: Track;
 }
 
 /** Spare movement rows, so adding a movement needs no JavaScript round-trip. */
@@ -62,11 +65,27 @@ function AiForm({
   const [phase, setPhase] = useState<Phase>(
     athletes.find((a) => a.id === defaultAthleteId)?.phase ?? "ramping",
   );
+  const [track, setTrack] = useState<Track>(
+    athletes.find((a) => a.id === defaultAthleteId)?.track ?? "long",
+  );
+  // The track decides how many sessions a week holds, so changing it moves the
+  // day count with it. Still a plain input: a coach writing four days on the
+  // short track is making a choice, not a mistake.
+  const [days, setDays] = useState(
+    TRACK_SPECS[athletes.find((a) => a.id === defaultAthleteId)?.track ?? "long"].sessions,
+  );
 
   function chooseAthlete(id: number) {
     setAthleteId(id);
-    const next = athletes.find((a) => a.id === id)?.phase;
-    if (next) setPhase(next);
+    const athlete = athletes.find((a) => a.id === id);
+    if (!athlete) return;
+    setPhase(athlete.phase);
+    chooseTrack(athlete.track);
+  }
+
+  function chooseTrack(next: Track) {
+    setTrack(next);
+    setDays(TRACK_SPECS[next].sessions);
   }
 
   return (
@@ -98,17 +117,37 @@ function AiForm({
           <Field label="Week beginning" hint="Snapped to the Monday.">
             <input name="start" type="date" defaultValue={weekStart} className={inputClass} />
           </Field>
-          <Field label="Training days">
+          <Field label="Sessions" hint={`${trackLength(track)} each`}>
             <input
               name="days"
               type="number"
               min={1}
               max={7}
-              defaultValue={4}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
               className={inputClass}
             />
           </Field>
         </div>
+
+        <Field label="Track" hint={TRACK_SPECS[track].summary}>
+          <select
+            name="track"
+            value={track}
+            onChange={(e) => chooseTrack(e.target.value as Track)}
+            className={inputClass}
+          >
+            {TRACKS.map((t) => (
+              <option key={t} value={t}>
+                {TRACK_SPECS[t].label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs opacity-60">
+            Their own track, unless you change it here — which writes one week on the other
+            track without moving them onto it.
+          </p>
+        </Field>
 
         <Field label="Phase" hint={PHASE_SPECS[phase].summary}>
           <select
@@ -215,6 +254,17 @@ function ManualForm({
               </label>
             ))}
           </div>
+        </Field>
+
+        <Field label="Track" hint="Which week shape this belongs to. None for a one-off.">
+          <select name="track" defaultValue="" className={inputClass}>
+            <option value="">No track</option>
+            {TRACKS.map((t) => (
+              <option key={t} value={t}>
+                {TRACK_SPECS[t].label}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Phase" hint="What this session is for. Leave as none for a one-off.">

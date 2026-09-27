@@ -21,6 +21,7 @@ function makeUser(name: string, email: string) {
     role: "member",
     unit: "kg",
     phase: "building",
+    track: "long",
     mustChangePassword: false,
   });
 }
@@ -33,6 +34,7 @@ function makeWorkout(title = "Cindy") {
     capSeconds: 1200,
     source: "manual",
     phase: null,
+    track: null,
     createdBy: null,
     movements: [
       { name: "Pull-up", reps: 5, sets: null, loadG: null, distanceM: null, seconds: null, notes: "" },
@@ -335,6 +337,7 @@ describe("training phase", () => {
       capSeconds: null,
       source: "ai",
       phase: "building",
+      track: "long",
       createdBy: user.id,
       movements: [
         { name: "Back squat", reps: 5, sets: 5, loadG: 100_000, distanceM: null, seconds: null, notes: "" },
@@ -536,5 +539,99 @@ describe("moving a session", () => {
 
     expect(store.moveAssignment(entry!.assignment.id, sam.id, "2026-09-24")).toBe(false);
     expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
+  });
+});
+
+describe("programming tracks", () => {
+  it("starts an athlete on the track they were created with", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    expect(user.track).toBe("long");
+    expect(store.findUser(user.id)!.track).toBe("long");
+  });
+
+  it("moves an athlete between tracks", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.setTrack(user.id, "short");
+    expect(store.findUser(user.id)!.track).toBe("short");
+  });
+
+  it("leaves written sessions on the track they were written for", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = store.createWorkout({
+      title: "Long piece",
+      format: "amrap",
+      description: "",
+      capSeconds: 1200,
+      source: "ai",
+      phase: "building",
+      track: "long",
+      createdBy: user.id,
+      movements: [
+        { name: "Row", reps: null, sets: null, loadG: null, distanceM: 500, seconds: null, notes: "" },
+      ],
+    });
+
+    // A 40-minute session does not become a 12-minute one because its athlete
+    // switched tracks.
+    store.setTrack(user.id, "short");
+    expect(store.getWorkout(workoutId)!.track).toBe("long");
+    expect(store.findUser(user.id)!.track).toBe("short");
+  });
+
+  it("accepts a hand-written workout on no track at all", () => {
+    expect(store.getWorkout(makeWorkout("One-off"))!.track).toBeNull();
+  });
+
+  it("reports the track alongside each logged result, for the prompt", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const workoutId = store.createWorkout({
+      title: "Short piece",
+      format: "amrap",
+      description: "",
+      capSeconds: 600,
+      source: "ai",
+      phase: "conditioning",
+      track: "short",
+      createdBy: user.id,
+      movements: [
+        { name: "Burpee", reps: 10, sets: null, loadG: null, distanceM: null, seconds: null, notes: "" },
+      ],
+    });
+    store.assign(workoutId, user.id, "2026-09-21");
+    const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
+    store.saveResult(
+      {
+        assignmentId: entry!.assignment.id,
+        scoreValue: roundsValue(8, 0),
+        scoreKind: "rounds",
+        scaled: false,
+        rpe: 8,
+        notes: "",
+        movements: [],
+      },
+      user.id,
+    );
+
+    // An RPE 8 in a 12-minute piece is not the same effort as an RPE 8 in a
+    // 40-minute one, so the history has to carry which it was.
+    const [row] = store.resultsSince(user.id, "2026-01-01");
+    expect(row!.track).toBe("short");
+  });
+
+  it("migrates an existing database onto the long track", () => {
+    withLegacyDb(3, (raw) => {
+      raw
+        .prepare(
+          `INSERT INTO users (email, name, password_hash, role, unit, phase)
+           VALUES ('old@example.com', 'Old Hand', 'x', 'member', 'kg', 'building')`,
+        )
+        .run();
+    }, (migrated) => {
+      const user = migrated.findUserByEmail("old@example.com")!;
+      expect(user.track).toBe("long");
+      expect(user.phase).toBe("building");
+      migrated.setTrack(user.id, "short");
+      expect(migrated.findUser(user.id)!.track).toBe("short");
+    });
   });
 });

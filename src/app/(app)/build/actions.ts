@@ -11,6 +11,7 @@ import { isValidDate, weekStart } from "@/lib/dates";
 import { UnitParseError, parseDuration, parseLoad } from "@/lib/units";
 import { isFormat, FORMAT_SPECS } from "@/lib/workout/formats";
 import { PHASE_SPECS, isPhase } from "@/lib/workout/phases";
+import { TRACK_SPECS, isTrack } from "@/lib/workout/tracks";
 
 export interface BuildState {
   error?: string;
@@ -49,19 +50,26 @@ export async function generate(_prev: BuildState, data: FormData): Promise<Build
   const phaseRaw = String(data.get("phase") ?? athlete.phase);
   if (!isPhase(phaseRaw)) return { error: "Pick a training phase." };
 
+  // Which track to write for. Defaults to the athlete's own, but the coach can
+  // build a week on the other one without moving them onto it.
+  const trackRaw = String(data.get("track") ?? athlete.track);
+  if (!isTrack(trackRaw)) return { error: "Pick a track." };
+
   try {
     const week = await generateWeek({
       prompt: String(data.get("prompt") ?? ""),
       days,
       athlete,
       phase: phaseRaw,
+      track: trackRaw,
     });
-    importWeek(week, athlete.id, start, phaseRaw);
+    importWeek(week, athlete.id, start, phaseRaw, trackRaw);
     revalidatePath("/week");
     revalidatePath("/");
     return {
       ok:
-        `Wrote ${week.workouts.length} session(s) for ${athlete.name}, ` +
+        `Wrote ${week.workouts.length} session(s) for ${athlete.name} on the ` +
+        `${TRACK_SPECS[trackRaw].label.toLowerCase()} track, ` +
         `${PHASE_SPECS[phaseRaw].label.toLowerCase()}, starting ${start}.`,
       summary: week.summary,
     };
@@ -95,6 +103,8 @@ export async function createManual(_prev: BuildState, data: FormData): Promise<B
   if (!isValidDate(date)) return { error: "Pick a date." };
 
   const phase = String(data.get("phase") ?? "");
+  const track = String(data.get("track") ?? "");
+  if (track !== "" && !isTrack(track)) return { error: "Pick a track, or none." };
   // A hand-written workout need not belong to a phase; "none" is a real answer
   // for a one-off, and is not the same as forgetting to choose.
   if (phase !== "" && !isPhase(phase)) return { error: "Pick a training phase, or none." };
@@ -135,6 +145,7 @@ export async function createManual(_prev: BuildState, data: FormData): Promise<B
       capSeconds,
       source: "manual",
       phase: phase === "" ? null : phase,
+      track: track === "" ? null : track,
       createdBy: owner.id,
       movements,
     });

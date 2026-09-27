@@ -5,6 +5,7 @@ import type { User } from "@/lib/db/types";
 import { formatLoad } from "@/lib/units";
 import type { Unit } from "@/lib/units";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
+import { TRACK_SPECS } from "@/lib/workout/tracks";
 import { formatScore, scoreFromValue } from "@/lib/workout/score";
 
 /** How far back the model is shown. Eight weeks is about two training blocks. */
@@ -68,7 +69,8 @@ export function trainingContext(user: User): string {
     lines.push("");
   }
 
-  lines.push("Recent sessions, newest first:");
+  lines.push("Recent sessions, newest first. The track each was written for is");
+  lines.push("shown in braces, because effort only means something against it:");
   for (const r of results.slice(0, 30)) {
     const spec = FORMAT_SPECS[r.format];
     const score =
@@ -76,6 +78,9 @@ export function trainingContext(user: User): string {
         ? "not finished"
         : formatScore(scoreFromValue(spec.score, r.scoreValue), user.unit);
     const bits = [`${r.date}`, r.title, `[${spec.label}]`, score];
+    // Which track a session came from changes how to read it: an RPE 8 in a
+    // 12-minute piece is not the same effort as an RPE 8 in a 40-minute one.
+    if (r.track) bits.push(`{${TRACK_SPECS[r.track].label}}`);
     if (r.scaled) bits.push("(scaled)");
     if (r.rpe !== null) bits.push(`RPE ${r.rpe}`);
     lines.push(`  ${bits.join(" - ")}`);
