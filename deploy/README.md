@@ -49,9 +49,8 @@ Nothing below is created automatically except the state directory.
 | `/opt/garage-wod-tracker` | The build. Read-only to the service. |
 | `/var/lib/garage-wod-tracker` | Created by `StateDirectory=` at 0700 on first start. Holds `training.db`. |
 
-```bash
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin garage-wod-tracker
-```
+The account is created as the first step of [First install](#first-install);
+it is listed here so the unit's requirements are in one place.
 
 Node 22 or newer is required: the app uses the built-in `node:sqlite`, so there
 is no native module to compile and nothing to rebuild when Node is upgraded.
@@ -87,6 +86,12 @@ is why `/opt` can be mounted read-only. Next does **not** copy the static
 assets into that output, so they are copied by hand.
 
 ```bash
+# The unit runs as its own system account. Create it FIRST: without it the
+# service never reaches node and dies with `status=217/USER`, which reads like
+# a permissions problem and is really a missing user.
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin garage-wod-tracker
+getent group garage-wod-tracker || sudo groupadd --system garage-wod-tracker
+
 git clone https://github.com/harknett/garage-wod-tracker.git
 cd garage-wod-tracker
 npm ci
@@ -399,6 +404,10 @@ afterwards.
 
 | Symptom | Cause |
 | --- | --- |
+| `status=217/USER`, restarting in a loop | The `garage-wod-tracker` user or group does not exist. systemd gives up before running node, so there is nothing in the app's log. `sudo useradd --system --no-create-home --shell /usr/sbin/nologin garage-wod-tracker` |
+| `status=203/EXEC` | Node is not at `/usr/bin/node` (`command -v node`), or `/opt/garage-wod-tracker/server.js` is missing because the rsync did not run. |
+| `status=226/NAMESPACE` | The confinement cannot set up a path the unit names — usually `WorkingDirectory` does not exist yet. |
+| Starts, then exits with `SQLITE_CANTOPEN` | `DATA_DIR` is not writable by the service user, or `StateDirectory=` was overridden by a drop-in. |
 | Page loads unstyled, nothing clickable | `.next/static` was not copied. Re-run that rsync. |
 | `EADDRINUSE` on start | Another service holds 3006. See the port table. |
 | Sign-in rejects a known-good password | The app is being reached over plain HTTP; the session cookie is `Secure` and never comes back. |
