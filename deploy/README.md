@@ -129,28 +129,192 @@ its own at first sign-in.
 ## Reverse proxy and TLS
 
 The service binds loopback and speaks plain HTTP. Session cookies are `Secure`
-in production, so the app does not work over plain HTTP from a browser — TLS in
-front is required, not optional.
+in production, so **the app does not work over plain HTTP from a browser** —
+you can sign in, the cookie is dropped, and you land back on the login form
+with no error. TLS in front is required, not optional.
+
+### Before you start
+
+| Need | Check |
+| --- | --- |
+| A name pointing at the server | `dig +short wod.example.com` returns your public IP |
+| Ports 80 and 443 open | `sudo ufw allow 'Nginx Full'`, or your provider's firewall |
+| The app running on loopback | `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3006/login` → `307` or `200` |
+
+Port 80 has to stay reachable even after you are on HTTPS: that is how renewal
+proves the domain every 60 days.
+
+### 1. Install
+
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+```
+
+### 2. A plain HTTP server block first
+
+Certbot needs a working HTTP site to prove you control the name. Write
+`/etc/nginx/sites-available/garage-wod-tracker`:
 
 ```nginx
 server {
+    listen 80;
+    listen [::]:80;
     server_name wod.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:3006;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
-        # The app throttles sign-ins per address. It trusts this header, so the
-        # proxy must overwrite whatever the client sent rather than append.
-        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
     }
 }
 ```
 
-Terminate TLS here (certbot, or whatever the host already uses). Response
-security headers — CSP, HSTS, nosniff, frame-ancestors — are set by the app in
-`next.config.ts`, so the proxy does not need to add them.
+Enable it and check the syntax before reloading — `nginx -t` is the difference
+between a typo and an outage:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/garage-wod-tracker /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default     # it otherwise answers for every name
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Confirm the site answers over HTTP before going further:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' http://wod.example.com/login
+```
+
+### 3. Get the certificate
+
+```bash
+sudo certbot --nginx -d wod.example.com
+```
+
+Certbot edits the file you just wrote: it adds a `listen 443 ssl` block, the
+`ssl_certificate` lines, and a second server block redirecting port 80 to
+HTTPS. Answer "redirect" when it offers.
+
+If you would rather it never touched your config, use the webroot method and
+write the TLS block yourself:
+
+```bash
+sudo certbot certonly --webroot -w /var/www/html -d wod.example.com
+```
+
+### 4. The finished server block
+
+Certbot's version works, but it does not know anything about this app. Replace
+the `location /` with the following — the comments are the parts that matter:
+
+```nginx
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    # nginx 1.25.1 and newer. On Debian 12 (1.22) and Ubuntu 24.04 (1.24) this
+    # directive does not exist — drop this line and write `listen 443 ssl http2;`
+    # instead. Check with `nginx -v` before pasting.
+    http2 on;
+    server_name wod.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/wod.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/wod.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Writing a week is ONE non-streaming request to Claude, and it routinely
+    # runs past nginx's 60-second default. The symptom is a 504 in the browser
+    # after a minute while the week generates fine and is saved — the reply
+    # just never reaches you, so the coach writes it again and gets two.
+    # Five minutes is comfortably clear.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    location / {
+        proxy_pass http://127.0.0.1:3006;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # $remote_addr, NOT $proxy_add_x_forwarded_for. The app throttles
+        # sign-ins per address and trusts this header, so nginx must overwrite
+        # whatever the client sent rather than append to it — otherwise anyone
+        # can send their own header and hand themselves a fresh allowance of
+        # guesses.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+    }
+}
+```
+
+That is the whole file on purpose. Two things people usually add here are
+already handled upstream, and adding them again makes things worse rather than
+better:
+
+| Tempting addition | Why it is left out |
+| --- | --- |
+| A `/_next/static/` block with long `Cache-Control` | Next already answers those with `public, max-age=31536000, immutable`. `add_header` **appends**, so you would send the header twice. |
+| `gzip on` | Next compresses its own responses; nginx will not re-compress something already gzipped. |
+
+Check for yourself rather than taking it on faith:
+
+```bash
+curl -sSI https://wod.example.com/_next/static/chunks/<any-file>.css | grep -i 'cache-control\|content-encoding'
+```
+
+**Do not add security headers here.** The app already sets its own
+Content-Security-Policy, HSTS, `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy` and `Permissions-Policy`. A second CSP from nginx is not
+merged — browsers enforce *both*, so the intersection wins, and since nginx's
+copy would not carry the per-request nonce, every inline script gets blocked
+and the app renders perfectly while doing nothing at all. If you want to see
+what is already being sent:
+
+```bash
+curl -sSI https://wod.example.com/login | grep -i -E 'content-security|strict-transport|x-frame'
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 5. Check renewal before you forget about it
+
+The package installs a systemd timer that renews anything within 30 days of
+expiry. Prove it works now rather than discovering it in 90 days:
+
+```bash
+systemctl list-timers | grep certbot        # the timer exists and is scheduled
+sudo certbot renew --dry-run                # a real renewal against the staging CA
+```
+
+A dry run that fails on the HTTP-01 challenge almost always means port 80 is
+closed, or the redirect to HTTPS is swallowing
+`/.well-known/acme-challenge/`. Certbot's own redirect block handles that
+correctly; a hand-written one often does not.
+
+### Verifying the whole path
+
+```bash
+curl -sS -o /dev/null -w 'http  -> %{http_code} %{redirect_url}\n' http://wod.example.com/
+curl -sS -o /dev/null -w 'https -> %{http_code}\n'                 https://wod.example.com/login
+curl -sSI https://wod.example.com/login | grep -i 'set-cookie\|content-security'
+```
+
+You want: HTTP answering 301 to HTTPS, HTTPS answering 200 on `/login`, and a
+`Set-Cookie` you only ever see once signed in. Then open it in a browser and
+sign in — if the form simply returns to itself, the cookie is being dropped,
+which means something in the chain is still plain HTTP.
+
+### When it goes wrong
+
+| Symptom | Cause |
+| --- | --- |
+| `502 Bad Gateway` | The app is not running, or not on 3006. `systemctl status garage-wod-tracker` |
+| `504` after ~60s, only when writing a week | `proxy_read_timeout` left at the default. See above. |
+| Sign-in returns to the sign-in form | Reached over plain HTTP somewhere; the `Secure` cookie never comes back. |
+| Page loads unstyled and nothing is clickable | Either `.next/static` was not copied on deploy, or nginx is adding a second CSP. |
+| Too many sign-in lockouts, or none | `X-Forwarded-For` is appended rather than overwritten, so the throttle keys on a spoofable value. |
+| Certificate renews but the site still serves the old one | nginx was not reloaded. Add `--deploy-hook "systemctl reload nginx"` to the renewal. |
 
 ## Upgrading
 
