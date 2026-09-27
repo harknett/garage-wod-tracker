@@ -29,18 +29,23 @@ function prescription(
 export function WorkoutCard({
   entry,
   unit,
-  movable = false,
   planLabel,
-  readOnly = false,
+  canLog = false,
+  canMove = false,
+  canRemove = false,
 }: {
   entry: DayEntry;
   unit: Unit;
-  /** Show the controls that shift this session or take it off the week. */
-  movable?: boolean;
   /** "Session 2 of 4", when this was written as part of a week. */
   planLabel?: string;
-  /** Somebody else's training: show it, but offer nothing that changes it. */
-  readOnly?: boolean;
+  /*
+    Three separate permissions rather than one read-only flag, because a coach
+    looking at an athlete's week sits between the two: they may rearrange it,
+    but logging is the athlete's to do and the result is theirs to keep.
+  */
+  canLog?: boolean;
+  canMove?: boolean;
+  canRemove?: boolean;
 }) {
   const { workout, result, assignment } = entry;
   const spec = FORMAT_SPECS[workout.format];
@@ -101,22 +106,28 @@ export function WorkoutCard({
         </ul>
       ) : null}
 
-      {readOnly ? null : (
+      {canLog || canMove || canRemove ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href={`/log/${assignment.id}`}
-            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
-          >
-            {result ? "Fix the record" : "Log it"}
-          </Link>
-          {movable ? (
-            <div className="flex flex-wrap items-center gap-2">
+          {canLog ? (
+            <Link
+              href={`/log/${assignment.id}`}
+              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
+            >
+              {result ? "Fix the record" : "Log it"}
+            </Link>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canMove ? (
               <MoveWorkout assignmentId={assignment.id} date={assignment.date} />
+            ) : null}
+            {canRemove ? (
               <RemoveWorkout assignmentId={assignment.id} hasResult={result !== null} />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      )}
+      ) : null}
     </Card>
   );
 }

@@ -13,9 +13,9 @@ export interface MoveState {
 /**
  * Move a session to another day.
  *
- * An athlete may move their own training; the ownership check lives in the
- * store, so a posted assignment id belonging to somebody else fails there
- * rather than depending on this action remembering to look.
+ * An athlete may move their own training, and an owner may rearrange anyone's.
+ * The rule lives in the store, so a posted assignment id is checked against
+ * the actor there rather than depending on this action remembering to look.
  */
 export async function moveWorkout(_prev: MoveState, data: FormData): Promise<MoveState> {
   const user = await requireUser();
@@ -25,8 +25,8 @@ export async function moveWorkout(_prev: MoveState, data: FormData): Promise<Mov
   if (!Number.isInteger(id)) return { error: "That is not a session." };
   if (!isValidDate(date)) return { error: "Pick a date." };
 
-  const moved = getStore().moveAssignment(id, user.id, date);
-  if (!moved) return { error: "That workout is already on that day." };
+  const moved = getStore().moveAssignment(id, date, { id: user.id, role: user.role });
+  if (!moved) return { error: "That workout is already on that day, or is not yours to move." };
 
   revalidatePath("/");
   revalidatePath("/week");

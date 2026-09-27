@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { MIGRATIONS } from "@/lib/db/migrations";
 import { Store } from "@/lib/db/store";
+import type { Role } from "@/lib/db/types";
 import { compareScores } from "@/lib/workout/formats";
 import { roundsValue } from "@/lib/workout/score";
 
@@ -468,6 +469,9 @@ describe("nested transactions", () => {
   });
 });
 
+/** The person doing the moving, as the store wants them. */
+const actor = (u: { id: number; role: Role }) => ({ id: u.id, role: u.role });
+
 describe("moving a session", () => {
   function assignAndLog(userId: number, workoutId: number, date: string) {
     store.assign(workoutId, userId, date);
@@ -493,7 +497,7 @@ describe("moving a session", () => {
     store.assign(workoutId, user.id, "2026-09-21");
     const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
 
-    expect(store.moveAssignment(entry!.assignment.id, user.id, "2026-09-24")).toBe(true);
+    expect(store.moveAssignment(entry!.assignment.id, "2026-09-24", actor(user))).toBe(true);
     expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(0);
     expect(store.entriesBetween(user.id, "2026-09-24", "2026-09-24")).toHaveLength(1);
   });
@@ -502,7 +506,7 @@ describe("moving a session", () => {
     const user = makeUser("Alex", "alex@example.com");
     const id = assignAndLog(user.id, makeWorkout(), "2026-09-21");
 
-    store.moveAssignment(id, user.id, "2026-09-24");
+    store.moveAssignment(id, "2026-09-24", actor(user));
 
     // results.date is a denormalised copy; leaving it behind would put the
     // session on the new day in the planner and the old one in the record.
@@ -520,7 +524,7 @@ describe("moving a session", () => {
     const [first] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
 
     // The unique index would otherwise reject this with a raw SQL error.
-    expect(store.moveAssignment(first!.assignment.id, user.id, "2026-09-24")).toBe(false);
+    expect(store.moveAssignment(first!.assignment.id, "2026-09-24", actor(user))).toBe(false);
     expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
   });
 
@@ -529,17 +533,82 @@ describe("moving a session", () => {
     const workoutId = makeWorkout();
     store.assign(workoutId, user.id, "2026-09-21");
     const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
-    expect(store.moveAssignment(entry!.assignment.id, user.id, "2026-09-21")).toBe(true);
+    expect(store.moveAssignment(entry!.assignment.id, "2026-09-21", actor(user))).toBe(true);
   });
 
-  it("will not move somebody else's session", () => {
+  it("will not let one athlete move another's session", () => {
     const alex = makeUser("Alex", "alex@example.com");
     const sam = makeUser("Sam", "sam@example.com");
     const workoutId = makeWorkout();
     store.assign(workoutId, alex.id, "2026-09-21");
     const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
 
-    expect(store.moveAssignment(entry!.assignment.id, sam.id, "2026-09-24")).toBe(false);
+    expect(store.moveAssignment(entry!.assignment.id, "2026-09-24", actor(sam))).toBe(false);
+    expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
+  });
+
+  it("lets an owner rearrange an athlete's week", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const coach = store.createUser({
+      email: "coach@example.com",
+      name: "Coach",
+      passwordHash: "x",
+      role: "owner",
+      unit: "kg",
+      phase: "building",
+      track: "long",
+      mustChangePassword: false,
+    });
+    const workoutId = makeWorkout();
+    store.assign(workoutId, alex.id, "2026-09-21");
+    const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
+
+    expect(store.moveAssignment(entry!.assignment.id, "2026-09-24", actor(coach))).toBe(true);
+    // It moves on the athlete's own week, not onto the coach's.
+    expect(store.entriesBetween(alex.id, "2026-09-24", "2026-09-24")).toHaveLength(1);
+    expect(store.entriesBetween(coach.id, "2026-09-24", "2026-09-24")).toHaveLength(0);
+  });
+
+  it("checks a clash against the athlete, not the coach doing the moving", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const coach = store.createUser({
+      email: "coach@example.com",
+      name: "Coach",
+      passwordHash: "x",
+      role: "owner",
+      unit: "kg",
+      phase: "building",
+      track: "long",
+      mustChangePassword: false,
+    });
+    const workoutId = makeWorkout();
+    store.assign(workoutId, alex.id, "2026-09-21");
+    store.assign(workoutId, alex.id, "2026-09-24");
+    // The coach holds nothing on the 24th, but Alex does — and it is Alex's
+    // week the unique index protects.
+    const [first] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
+    expect(store.moveAssignment(first!.assignment.id, "2026-09-24", actor(coach))).toBe(false);
+  });
+
+  it("still will not let an owner delete an athlete's logged training", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const coach = store.createUser({
+      email: "coach@example.com",
+      name: "Coach",
+      passwordHash: "x",
+      role: "owner",
+      unit: "kg",
+      phase: "building",
+      track: "long",
+      mustChangePassword: false,
+    });
+    const workoutId = makeWorkout();
+    store.assign(workoutId, alex.id, "2026-09-21");
+    const [entry] = store.entriesBetween(alex.id, "2026-09-21", "2026-09-21");
+
+    // Rearranging a week is coaching; deleting what somebody already did is
+    // not, and removal cascades to the result they earned.
+    expect(store.deleteAssignment(entry!.assignment.id, coach.id)).toBe(false);
     expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
   });
 });

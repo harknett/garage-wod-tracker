@@ -17,7 +17,7 @@ phone. Next.js, SQLite, no account anywhere else.
 | **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
 | **Logging** | Per-movement reps, load, time and distance. The workout's result is derived from those as you type, never entered separately. Built for a phone, mid-session, with one hand. |
 | **Planning** | Sessions can be moved to any other day from the week view, or removed; a logged result moves with them. A week written in one go stays visibly grouped, with the model's own account of what it was for. |
-| **Coaching** | The owner can look at any athlete's week, read-only — what is prescribed and what came back. |
+| **Coaching** | The owner can look at any athlete's week and rearrange it. Logging and removing stay with the athlete. |
 | **Units** | Loads in kilograms or pounds, per athlete. Both are stored as grams, so two people logging the same barbell land on the same number. |
 | **Leaderboard** | Any workout two or more athletes have done, ranked in the direction that format actually runs. |
 | **Progress** | Sessions per week, RPE trend, format mix, and the heaviest load recorded per movement. |

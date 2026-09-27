@@ -483,13 +483,20 @@ export class Store {
    * in two places at once: on the new day in the planner and the old one in
    * the record.
    *
+   * The actor is either the athlete whose week it is, or an owner: rearranging
+   * somebody's week is coaching, and a coach looking at an athlete's week is
+   * the person most likely to notice that two hard days have ended up back to
+   * back. Taking a session away is a different matter and stays with the
+   * athlete — see `deleteAssignment`.
+   *
    * Returns false when the athlete already has that workout on the target
    * day, which the unique index would otherwise reject with a raw SQL error.
    */
-  moveAssignment(id: number, userId: number, date: string): boolean {
+  moveAssignment(id: number, date: string, actor: { id: number; role: Role }): boolean {
     return this.transaction(() => {
       const assignment = this.findAssignment(id);
-      if (!assignment || assignment.userId !== userId) return false;
+      if (!assignment) return false;
+      if (assignment.userId !== actor.id && actor.role !== "owner") return false;
       if (assignment.date === date) return true;
 
       const clash = this.db
@@ -497,7 +504,7 @@ export class Store {
           `SELECT 1 FROM assignments
            WHERE user_id = ? AND date = ? AND workout_id = ? AND id != ?`,
         )
-        .get(userId, date, assignment.workoutId, id);
+        .get(assignment.userId, date, assignment.workoutId, id);
       if (clash) return false;
 
       this.db.prepare("UPDATE assignments SET date = ? WHERE id = ?").run(date, id);
@@ -507,7 +514,12 @@ export class Store {
   }
 
   /**
-   * Take a session out of somebody's week.
+   * Take a session out of your own week.
+   *
+   * Deliberately narrower than `moveAssignment`: an owner may rearrange an
+   * athlete's week, but not delete training they have already done. Removal
+   * cascades to the logged result, and that record belongs to the person who
+   * earned it.
    *
    * The workout itself survives: it may be on other athletes' weeks, and the
    * assignment is only the link. The logged result does not — `results` is

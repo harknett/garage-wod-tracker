@@ -35,7 +35,7 @@ export default async function TodayPage() {
       ) : (
         <div className="space-y-4">
           {entries.map((entry) => (
-            <WorkoutCard key={entry.assignment.id} entry={entry} unit={user.unit} />
+            <WorkoutCard key={entry.assignment.id} entry={entry} unit={user.unit} canLog />
           ))}
         </div>
       )}

@@ -38,6 +38,10 @@ export default async function WeekPage({
       ? (store.findUser(requested) ?? viewer)
       : viewer;
   const isSelf = subject.id === viewer.id;
+  // A coach may rearrange an athlete's week — they are the one who notices two
+  // hard days have ended up back to back. Logging and removing stay with the
+  // athlete: the result is theirs to record and theirs to keep.
+  const canRearrange = isSelf || viewer.role === "owner";
 
   // An unparseable ?start= is a stale link or a typed URL, not an error worth
   // a page for; fall back to this week.
@@ -83,7 +87,8 @@ export default async function WeekPage({
 
       {!isSelf ? (
         <p className="mb-4 rounded-lg border border-black/10 bg-black/5 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5">
-          Looking at {subject.name}&rsquo;s programming. Theirs to log — nothing here changes it.
+          Looking at {subject.name}&rsquo;s programming. You can move sessions around; logging
+          them, and removing them, stays with {subject.name}.
         </p>
       ) : null}
 
@@ -137,8 +142,9 @@ export default async function WeekPage({
                         key={entry.assignment.id}
                         entry={entry}
                         unit={subject.unit}
-                        movable={isSelf}
-                        readOnly={!isSelf}
+                        canLog={isSelf}
+                        canMove={canRearrange}
+                        canRemove={isSelf}
                         planLabel={
                           plan && at ? `Session ${at} of ${plan.sessions}` : undefined
                         }
