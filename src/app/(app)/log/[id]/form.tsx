@@ -139,49 +139,6 @@ export function LogForm({
         </Card>
       ) : null}
 
-      <Card>
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide opacity-60">Result</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums">
-              {derived ?? "—"}
-            </p>
-          </div>
-          <p className="max-w-[55%] text-right text-xs opacity-60">{spec.hint}</p>
-        </div>
-        <p className="mt-3 flex flex-wrap items-center gap-2 text-xs opacity-60">
-          <span>Worked out from the movements below. Fill those in and this follows.</span>
-          <span
-            role="status"
-            className={progress.error ? "font-medium text-rust dark:text-orange-300" : "font-medium"}
-          >
-            {savedNote}
-          </span>
-        </p>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Field label="RPE" hint="How hard it actually was, 1\u201310. Be honest.">
-            <input
-              name="rpe"
-              type="number"
-              min={1}
-              max={10}
-              inputMode="numeric"
-              defaultValue={existing?.rpe ?? ""}
-              className={inputClass}
-            />
-          </Field>
-          <label className="flex min-h-11 items-center gap-3 self-end">
-            <input
-              type="checkbox"
-              name="scaled"
-              defaultChecked={existing?.scaled ?? false}
-              className="size-5"
-            />
-            <span className="text-sm font-medium">I scaled it</span>
-          </label>
-        </div>
-      </Card>
 
       {workout.movements.length > 0 ? (
         <Card>
@@ -263,6 +220,50 @@ export function LogForm({
           </div>
         </Card>
       ) : null}
+
+      <Card>
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide opacity-60">Result</p>
+            <p className="mt-1 text-3xl font-semibold tabular-nums">
+              {derived ?? "—"}
+            </p>
+          </div>
+          <p className="max-w-[55%] text-right text-xs opacity-60">{spec.hint}</p>
+        </div>
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-xs opacity-60">
+          <span>Worked out from the movements above, as you fill them in.</span>
+          <span
+            role="status"
+            className={progress.error ? "font-medium text-rust dark:text-orange-300" : "font-medium"}
+          >
+            {savedNote}
+          </span>
+        </p>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Field label="RPE" hint="How hard it actually was, 1\u201310. Be honest.">
+            <input
+              name="rpe"
+              type="number"
+              min={1}
+              max={10}
+              inputMode="numeric"
+              defaultValue={existing?.rpe ?? ""}
+              className={inputClass}
+            />
+          </Field>
+          <label className="flex min-h-11 items-center gap-3 self-end">
+            <input
+              type="checkbox"
+              name="scaled"
+              defaultChecked={existing?.scaled ?? false}
+              className="size-5"
+            />
+            <span className="text-sm font-medium">I scaled it</span>
+          </label>
+        </div>
+      </Card>
 
       <Card>
         <Field label="After action" hint="What held up, what broke down, what you fix next time.">
