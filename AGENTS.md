@@ -30,6 +30,17 @@ someone is reading them mid-session with chalk on their hands.
 - **A null score is not a zero.** It means started-but-not-recorded, and it
   sorts last in both directions; a zero would beat every finisher in a
   lower-is-better workout.
+- **Removing an assignment destroys training history.** `results` is keyed on
+  the assignment and cascades, so it is the only action in the app that can
+  delete a logged session. Any control that calls it asks twice and names what
+  goes with it.
+- **A plan is the record that sessions were written together**, and the only
+  place the model's week summary survives. `workouts.plan_id` is
+  `ON DELETE SET NULL`: a workout somebody has already done outlives the week
+  it was planned in.
+- **Viewing another athlete is read-only.** Only an owner may, the subject
+  comes from `?athlete=`, and the store's ownership checks are the real
+  boundary — the page hiding the buttons is a courtesy, not the enforcement.
 - **`results.date` is a denormalised copy of the assignment's date.** Moving a
   session must update both, or it sits on one day in the planner and another
   in the record.

@@ -146,6 +146,8 @@ export async function createManual(_prev: BuildState, data: FormData): Promise<B
       source: "manual",
       phase: phase === "" ? null : phase,
       track: track === "" ? null : track,
+      // Written on its own, so it is not part of any week.
+      planId: null,
       createdBy: owner.id,
       movements,
     });

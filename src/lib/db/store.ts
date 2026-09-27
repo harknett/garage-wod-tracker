@@ -14,7 +14,9 @@ import type {
   LeaderboardRow,
   Movement,
   MovementResult,
+  Plan,
   NewEquipment,
+  NewPlan,
   NewResult,
   NewWorkout,
   Result,
@@ -55,6 +57,7 @@ function mapWorkout(r: Row): Workout {
     source: str(r.source) as Source,
     phase: r.phase == null ? null : (str(r.phase) as Phase),
     track: r.track == null ? null : (str(r.track) as Track),
+    planId: nnum(r.plan_id),
     createdBy: nnum(r.created_by),
     createdAt: str(r.created_at),
   };
@@ -109,6 +112,18 @@ function mapEquipment(r: Row): Equipment {
     detail: str(r.detail),
     maxLoadG: nnum(r.max_load_g),
     available: bool(r.available),
+    createdAt: str(r.created_at),
+  };
+}
+
+function mapPlan(r: Row): Plan {
+  return {
+    id: num(r.id),
+    userId: num(r.user_id),
+    startDate: str(r.start_date),
+    phase: r.phase == null ? null : (str(r.phase) as Phase),
+    track: r.track == null ? null : (str(r.track) as Track),
+    summary: str(r.summary),
     createdAt: str(r.created_at),
   };
 }
@@ -353,8 +368,9 @@ export class Store {
     return this.transaction(() => {
       const row = this.db
         .prepare(
-          `INSERT INTO workouts (title, format, description, cap_seconds, source, phase, track, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO workouts
+             (title, format, description, cap_seconds, source, phase, track, plan_id, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         )
         .get(
           input.title.trim(),
@@ -364,6 +380,7 @@ export class Store {
           input.source,
           input.phase,
           input.track,
+          input.planId,
           input.createdBy,
         ) as Row;
       const workoutId = num(row.id);
@@ -415,6 +432,35 @@ export class Store {
     this.db.prepare("DELETE FROM workouts WHERE id = ?").run(id);
   }
 
+  // --- plans ---------------------------------------------------------------
+
+  createPlan(input: NewPlan): number {
+    const row = this.db
+      .prepare(
+        `INSERT INTO plans (user_id, start_date, phase, track, summary)
+         VALUES (?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(input.userId, input.startDate, input.phase, input.track, input.summary) as Row;
+    return num(row.id);
+  }
+
+  /**
+   * A plan, with how many sessions it holds.
+   *
+   * The count comes from the workouts rather than from what was generated, so
+   * removing a session from the week is reflected rather than leaving the
+   * group claiming a session that is no longer there.
+   */
+  findPlan(id: number): (Plan & { sessions: number }) | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT p.*, (SELECT COUNT(*) FROM workouts w WHERE w.plan_id = p.id) AS sessions
+         FROM plans p WHERE p.id = ?`,
+      )
+      .get(id) as Row | undefined;
+    return row ? { ...mapPlan(row), sessions: num(row.sessions) } : undefined;
+  }
+
   // --- assignments ---------------------------------------------------------
 
   /** Put a workout in front of an athlete on a day. Assigning twice is a no-op. */
@@ -460,8 +506,22 @@ export class Store {
     });
   }
 
-  deleteAssignment(id: number, userId: number): void {
+  /**
+   * Take a session out of somebody's week.
+   *
+   * The workout itself survives: it may be on other athletes' weeks, and the
+   * assignment is only the link. The logged result does not — `results` is
+   * keyed on the assignment and cascades — so this is the one action in the app
+   * that destroys training history, and the screen asks twice before it fires.
+   *
+   * Returns whether anything was removed, so a stale link posted twice reports
+   * honestly instead of silently doing nothing.
+   */
+  deleteAssignment(id: number, userId: number): boolean {
+    const assignment = this.findAssignment(id);
+    if (!assignment || assignment.userId !== userId) return false;
     this.db.prepare("DELETE FROM assignments WHERE id = ? AND user_id = ?").run(id, userId);
+    return true;
   }
 
   findAssignment(id: number): Assignment | undefined {

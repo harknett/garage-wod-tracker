@@ -35,6 +35,7 @@ function makeWorkout(title = "Cindy") {
     source: "manual",
     phase: null,
     track: null,
+    planId: null,
     createdBy: null,
     movements: [
       { name: "Pull-up", reps: 5, sets: null, loadG: null, distanceM: null, seconds: null, notes: "" },
@@ -338,6 +339,7 @@ describe("training phase", () => {
       source: "ai",
       phase: "building",
       track: "long",
+      planId: null,
       createdBy: user.id,
       movements: [
         { name: "Back squat", reps: 5, sets: 5, loadG: 100_000, distanceM: null, seconds: null, notes: "" },
@@ -565,6 +567,7 @@ describe("programming tracks", () => {
       source: "ai",
       phase: "building",
       track: "long",
+      planId: null,
       createdBy: user.id,
       movements: [
         { name: "Row", reps: null, sets: null, loadG: null, distanceM: 500, seconds: null, notes: "" },
@@ -592,6 +595,7 @@ describe("programming tracks", () => {
       source: "ai",
       phase: "conditioning",
       track: "short",
+      planId: null,
       createdBy: user.id,
       movements: [
         { name: "Burpee", reps: 10, sets: null, loadG: null, distanceM: null, seconds: null, notes: "" },
@@ -633,5 +637,152 @@ describe("programming tracks", () => {
       migrated.setTrack(user.id, "short");
       expect(migrated.findUser(user.id)!.track).toBe("short");
     });
+  });
+});
+
+describe("removing a session from a week", () => {
+  function assignTo(userId: number, workoutId: number, date = "2026-09-21") {
+    store.assign(workoutId, userId, date);
+    const [entry] = store.entriesBetween(userId, date, date);
+    return entry!.assignment.id;
+  }
+
+  it("takes the session off the week", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const id = assignTo(user.id, makeWorkout());
+    expect(store.deleteAssignment(id, user.id)).toBe(true);
+    expect(store.entriesBetween(user.id, "2026-09-21", "2026-09-21")).toHaveLength(0);
+  });
+
+  it("leaves the workout itself alone, because others may be doing it", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const workoutId = makeWorkout();
+    const alexId = assignTo(alex.id, workoutId);
+    assignTo(sam.id, workoutId);
+
+    store.deleteAssignment(alexId, alex.id);
+
+    expect(store.getWorkout(workoutId)).toBeDefined();
+    expect(store.entriesBetween(sam.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
+  });
+
+  it("destroys the logged result with it", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const id = assignTo(user.id, makeWorkout());
+    store.saveResult(
+      {
+        assignmentId: id,
+        scoreValue: roundsValue(18, 7),
+        scoreKind: "rounds",
+        scaled: false,
+        rpe: 8,
+        notes: "",
+        movements: [],
+      },
+      user.id,
+    );
+    expect(store.resultsSince(user.id, "2026-01-01")).toHaveLength(1);
+
+    // results cascade from the assignment, so this is the one action in the
+    // app that destroys training history. The UI asks twice for that reason.
+    store.deleteAssignment(id, user.id);
+    expect(store.resultsSince(user.id, "2026-01-01")).toHaveLength(0);
+  });
+
+  it("refuses to remove somebody else's session", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const id = assignTo(alex.id, makeWorkout());
+
+    expect(store.deleteAssignment(id, sam.id)).toBe(false);
+    expect(store.entriesBetween(alex.id, "2026-09-21", "2026-09-21")).toHaveLength(1);
+  });
+
+  it("reports honestly when the session is already gone", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const id = assignTo(user.id, makeWorkout());
+    expect(store.deleteAssignment(id, user.id)).toBe(true);
+    // A stale link posted twice should say so rather than silently succeed.
+    expect(store.deleteAssignment(id, user.id)).toBe(false);
+  });
+});
+
+describe("weeks written in one go", () => {
+  function planned(userId: number, summary = "Build the engine back up.") {
+    const planId = store.createPlan({
+      userId,
+      startDate: "2026-09-21",
+      phase: "building",
+      track: "long",
+      summary,
+    });
+    const ids = [0, 2, 4].map((day) => {
+      const workoutId = store.createWorkout({
+        title: `Day ${day}`,
+        format: "amrap",
+        description: "",
+        capSeconds: 1200,
+        source: "ai",
+        phase: "building",
+        track: "long",
+        planId,
+        createdBy: userId,
+        movements: [
+          { name: "Row", reps: null, sets: null, loadG: null, distanceM: 500, seconds: null, notes: "" },
+        ],
+      });
+      store.assign(workoutId, userId, `2026-09-2${1 + day}`);
+      return workoutId;
+    });
+    return { planId, ids };
+  }
+
+  it("ties the sessions to the plan that produced them", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const { planId, ids } = planned(user.id);
+    for (const id of ids) expect(store.getWorkout(id)!.planId).toBe(planId);
+  });
+
+  it("keeps the model's account of the week", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const { planId } = planned(user.id, "Three broad sessions, engine first.");
+    expect(store.findPlan(planId)!.summary).toBe("Three broad sessions, engine first.");
+  });
+
+  it("counts the sessions actually in the plan, not the ones generated", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const { planId } = planned(user.id);
+    expect(store.findPlan(planId)!.sessions).toBe(3);
+
+    // Remove one from the week: the group must stop claiming a session that
+    // is no longer there.
+    const [entry] = store.entriesBetween(user.id, "2026-09-21", "2026-09-21");
+    store.deleteAssignment(entry!.assignment.id, user.id);
+    store.deleteWorkout(entry!.workout.id);
+    expect(store.findPlan(planId)!.sessions).toBe(2);
+  });
+
+  it("a workout written on its own belongs to no plan", () => {
+    expect(store.getWorkout(makeWorkout("One-off"))!.planId).toBeNull();
+  });
+
+  it("losing the plan does not take the sessions with it", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const { planId, ids } = planned(user.id);
+
+    // Deleting a plan is not something the app offers, so there is no Store
+    // method for it. The schema's behaviour is still worth pinning: open the
+    // same file directly and delete the row out from under it.
+    const side = new DatabaseSync(join(dir, "test.db"));
+    side.exec("PRAGMA foreign_keys = ON");
+    side.prepare("DELETE FROM plans WHERE id = ?").run(planId);
+    side.close();
+    // ON DELETE SET NULL: a workout somebody has already done outlives the
+    // week it was planned in.
+    for (const id of ids) {
+      expect(store.getWorkout(id)).toBeDefined();
+      expect(store.getWorkout(id)!.planId).toBeNull();
+    }
   });
 });

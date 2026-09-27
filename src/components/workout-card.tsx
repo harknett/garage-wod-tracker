@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui";
 import { MoveWorkout } from "@/components/move-workout";
+import { RemoveWorkout } from "@/components/remove-workout";
 import type { DayEntry } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
 import { formatDuration, formatLoad } from "@/lib/units";
@@ -29,17 +30,31 @@ export function WorkoutCard({
   entry,
   unit,
   movable = false,
+  planLabel,
+  readOnly = false,
 }: {
   entry: DayEntry;
   unit: Unit;
-  /** Show the date picker that shifts this session to another day. */
+  /** Show the controls that shift this session or take it off the week. */
   movable?: boolean;
+  /** "Session 2 of 4", when this was written as part of a week. */
+  planLabel?: string;
+  /** Somebody else's training: show it, but offer nothing that changes it. */
+  readOnly?: boolean;
 }) {
   const { workout, result, assignment } = entry;
   const spec = FORMAT_SPECS[workout.format];
 
   return (
-    <Card>
+    // A session written as part of a week carries a coloured spine, so a
+    // planned week reads as one block and a workout added on its own does not
+    // pretend to belong to it.
+    <Card className={workout.planId ? "border-l-4 border-l-[#2a78d6]" : ""}>
+      {planLabel ? (
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#2a78d6]">
+          {planLabel}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-lg font-semibold">{workout.title}</h3>
@@ -86,15 +101,22 @@ export function WorkoutCard({
         </ul>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href={`/log/${assignment.id}`}
-          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
-        >
-          {result ? "Fix the record" : "Log it"}
-        </Link>
-        {movable ? <MoveWorkout assignmentId={assignment.id} date={assignment.date} /> : null}
-      </div>
+      {readOnly ? null : (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href={`/log/${assignment.id}`}
+            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
+          >
+            {result ? "Fix the record" : "Log it"}
+          </Link>
+          {movable ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <MoveWorkout assignmentId={assignment.id} date={assignment.date} />
+              <RemoveWorkout assignmentId={assignment.id} hasResult={result !== null} />
+            </div>
+          ) : null}
+        </div>
+      )}
     </Card>
   );
 }

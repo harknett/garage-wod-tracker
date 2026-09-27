@@ -1,10 +1,15 @@
 import Link from "next/link";
 
 import { WorkoutCard } from "@/components/workout-card";
-import { Empty, PageTitle } from "@/components/ui";
+import { Card, Empty, PageTitle } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guard";
 import { getStore } from "@/lib/db";
+import type { Plan } from "@/lib/db/types";
 import { addDays, dayName, isValidDate, shortDate, today, weekStart } from "@/lib/dates";
+import { PHASE_SPECS } from "@/lib/workout/phases";
+import { TRACK_SPECS, trackLength } from "@/lib/workout/tracks";
+
+import { AthletePicker } from "./athlete-picker";
 
 export const metadata = { title: "Week - Garage WOD Tracker" };
 export const dynamic = "force-dynamic";
@@ -12,37 +17,105 @@ export const dynamic = "force-dynamic";
 export default async function WeekPage({
   searchParams,
 }: {
-  searchParams: Promise<{ start?: string }>;
+  searchParams: Promise<{ start?: string; athlete?: string }>;
 }) {
-  const user = await requireUser();
+  const viewer = await requireUser();
   const params = await searchParams;
+  const store = getStore();
+
+  /*
+    Whose week is on screen.
+
+    An owner may look at anybody's programming; everyone else only ever sees
+    their own, and an athlete id in the query string does nothing for them.
+    Somebody else's week is shown read-only: the coach can see what is
+    prescribed and what came back, but logging is the athlete's to do and the
+    store would refuse it anyway.
+  */
+  const requested = params.athlete ? Number(params.athlete) : viewer.id;
+  const subject =
+    viewer.role === "owner" && Number.isInteger(requested)
+      ? (store.findUser(requested) ?? viewer)
+      : viewer;
+  const isSelf = subject.id === viewer.id;
+
   // An unparseable ?start= is a stale link or a typed URL, not an error worth
   // a page for; fall back to this week.
   const start =
     params.start && isValidDate(params.start) ? weekStart(params.start) : weekStart(today());
   const end = addDays(start, 6);
 
-  const entries = getStore().entriesBetween(user.id, start, end);
+  const entries = store.entriesBetween(subject.id, start, end);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+
+  // Each week written in one go, with its place in the group. Fetched once per
+  // plan rather than per card.
+  const plans = new Map<number, Plan & { sessions: number }>();
+  for (const id of new Set(entries.map((e) => e.workout.planId).filter((id) => id !== null))) {
+    const plan = store.findPlan(id);
+    if (plan) plans.set(id, plan);
+  }
+  const positions = new Map<number, number>();
+  for (const [planId] of plans) {
+    const ofPlan = entries
+      .filter((e) => e.workout.planId === planId)
+      .sort((a, b) => a.assignment.date.localeCompare(b.assignment.date));
+    ofPlan.forEach((e, i) => positions.set(e.assignment.id, i + 1));
+  }
+
+  const link = (from: string) =>
+    isSelf ? `/week?start=${from}` : `/week?start=${from}&athlete=${subject.id}`;
 
   return (
     <>
-      <PageTitle sub={`${shortDate(start)} – ${shortDate(end)}`}>Week</PageTitle>
+      <PageTitle sub={`${shortDate(start)} – ${shortDate(end)}`}>
+        {isSelf ? "Week" : `${subject.name}'s week`}
+      </PageTitle>
+
+      {viewer.role === "owner" ? (
+        <AthletePicker
+          athletes={store.listUsers().map((a) => ({ id: a.id, name: a.name }))}
+          selected={subject.id}
+          start={start}
+          viewerId={viewer.id}
+        />
+      ) : null}
+
+      {!isSelf ? (
+        <p className="mb-4 rounded-lg border border-black/10 bg-black/5 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5">
+          Looking at {subject.name}&rsquo;s programming. Theirs to log — nothing here changes it.
+        </p>
+      ) : null}
 
       <nav className="mb-5 flex gap-2">
         <Link
-          href={`/week?start=${addDays(start, -7)}`}
+          href={link(addDays(start, -7))}
           className="min-h-11 rounded-lg border border-black/15 px-4 py-2 text-sm dark:border-white/20"
         >
           ← Previous
         </Link>
         <Link
-          href={`/week?start=${addDays(start, 7)}`}
+          href={link(addDays(start, 7))}
           className="min-h-11 rounded-lg border border-black/15 px-4 py-2 text-sm dark:border-white/20"
         >
           Next →
         </Link>
       </nav>
+
+      {/* What the model was going for, once per week it wrote. */}
+      {[...plans.values()].map((plan) => (
+        <Card key={plan.id} className="mb-4 border-l-4 border-l-[#2a78d6]">
+          <p className="text-xs font-medium uppercase tracking-wide text-[#2a78d6]">
+            Written as one week
+          </p>
+          <p className="mt-1 text-sm opacity-60">
+            {plan.sessions} session{plan.sessions === 1 ? "" : "s"}
+            {plan.track ? ` · ${TRACK_SPECS[plan.track].label.toLowerCase()}, ${trackLength(plan.track)}` : ""}
+            {plan.phase ? ` · ${PHASE_SPECS[plan.phase].label.toLowerCase()}` : ""}
+          </p>
+          {plan.summary ? <p className="mt-2 text-sm opacity-85">{plan.summary}</p> : null}
+        </Card>
+      ))}
 
       <div className="space-y-6">
         {days.map((date) => {
@@ -56,14 +129,22 @@ export default async function WeekPage({
                 <Empty>Rest. Earn the next one.</Empty>
               ) : (
                 <div className="space-y-3">
-                  {forDay.map((entry) => (
-                    <WorkoutCard
-                      key={entry.assignment.id}
-                      entry={entry}
-                      unit={user.unit}
-                      movable
-                    />
-                  ))}
+                  {forDay.map((entry) => {
+                    const plan = entry.workout.planId ? plans.get(entry.workout.planId) : undefined;
+                    const at = positions.get(entry.assignment.id);
+                    return (
+                      <WorkoutCard
+                        key={entry.assignment.id}
+                        entry={entry}
+                        unit={subject.unit}
+                        movable={isSelf}
+                        readOnly={!isSelf}
+                        planLabel={
+                          plan && at ? `Session ${at} of ${plan.sessions}` : undefined
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </section>

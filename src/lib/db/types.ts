@@ -44,6 +44,8 @@ export interface Workout {
   phase: Phase | null;
   /** The track this was written for. Null for anything predating tracks. */
   track: Track | null;
+  /** The week this was written as part of, if it was written as part of one. */
+  planId: number | null;
   createdBy: number | null;
   createdAt: string;
 }
@@ -127,6 +129,7 @@ export interface NewWorkout {
   source: Source;
   phase: Phase | null;
   track: Track | null;
+  planId: number | null;
   createdBy: number | null;
   movements: NewMovement[];
 }
@@ -145,4 +148,29 @@ export interface NewEquipment {
   detail: string;
   maxLoadG: number | null;
   available: boolean;
+}
+
+/**
+ * A week written in one go.
+ *
+ * The sessions that came out of a single generation, held together so they can
+ * be shown as the group they are. Carries the model's own account of what the
+ * week was for, which is the only place that survives.
+ */
+export interface Plan {
+  id: number;
+  userId: number;
+  startDate: string;
+  phase: Phase | null;
+  track: Track | null;
+  summary: string;
+  createdAt: string;
+}
+
+export interface NewPlan {
+  userId: number;
+  startDate: string;
+  phase: Phase | null;
+  track: Track | null;
+  summary: string;
 }

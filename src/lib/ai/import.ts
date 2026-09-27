@@ -12,6 +12,11 @@ import type { GeneratedWeek } from "./schema";
 /**
  * Turn a generated week into rows, assigned to one athlete.
  *
+ * The sessions are tied to a plan row, so the week can later be shown as the
+ * group it is rather than as loose workouts that happen to sit near each
+ * other. The model's summary is stored there too — it is the only account of
+ * why the week looks the way it does, and it used to be shown once and lost.
+ *
  * Two conversions happen here and nowhere else: kilograms become stored grams,
  * and a day offset becomes a calendar date. Doing both at the boundary keeps
  * the model's output in the model's own units right up until it lands.
@@ -29,8 +34,16 @@ export function importWeek(
 ): number[] {
   const store = getStore();
 
-  return store.transaction(() =>
-    week.workouts.map((w) => {
+  return store.transaction(() => {
+    const planId = store.createPlan({
+      userId,
+      startDate,
+      phase,
+      track,
+      summary: week.summary,
+    });
+
+    return week.workouts.map((w) => {
       const movements: NewMovement[] = w.movements.map((m) => ({
         name: m.name,
         reps: m.reps,
@@ -56,12 +69,13 @@ export function importWeek(
         // Stamped from the track the week was written for. A session keeps the
         // shape it was designed as, whatever the athlete switches to later.
         track,
+        planId,
         createdBy: userId,
         movements,
       });
 
       store.assign(workoutId, userId, addDays(startDate, w.day), w.day);
       return workoutId;
-    }),
-  );
+    });
+  });
 }

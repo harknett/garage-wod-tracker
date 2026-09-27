@@ -188,4 +188,32 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workouts ADD COLUMN track TEXT
     CHECK (track IS NULL OR track IN ('long','short'));
   `,
+
+  // A week written in one go, so the sessions that came out of a single
+  // generation can be shown as the group they are rather than as loose
+  // workouts that happen to sit near each other. It is also the only place the
+  // model's own summary of the week survives; before this it was shown once on
+  // the Build screen and thrown away.
+  `
+  CREATE TABLE plans (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- The day the week was written to start on. Sessions can be moved
+    -- afterwards, so this is where it began, not where it ended up.
+    start_date TEXT NOT NULL,
+    phase      TEXT,
+    track      TEXT,
+    -- What the model said it was going for. Empty for a plan with no summary.
+    summary    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX idx_plans_user ON plans(user_id, start_date);
+
+  -- Null for anything written on its own, which is most of what a coach adds
+  -- by hand. ON DELETE SET NULL, because losing the plan should not take the
+  -- sessions with it: a workout somebody has already done outlives the week it
+  -- was planned in.
+  ALTER TABLE workouts ADD COLUMN plan_id INTEGER
+    REFERENCES plans(id) ON DELETE SET NULL;
+  `,
 ];
