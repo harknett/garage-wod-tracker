@@ -9,7 +9,7 @@ import { removeWorkout, type RemoveState } from "@/app/(app)/week/actions";
  *
  * Two steps, always. Removing an assignment cascades to its logged result, so
  * this is the only control in the app that can destroy training you have
- * already done — and on a phone the button sits a thumb's width from "Log it".
+ * already done — and on a phone the button sits a thumb's width from "Start it".
  * The second step names what is actually at stake rather than asking a generic
  * "are you sure".
  */

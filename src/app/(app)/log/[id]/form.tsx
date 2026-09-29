@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Card, Field, Notice, PageTitle, inputClass } from "@/components/ui";
 import type { FullWorkout, MovementResult, Result } from "@/lib/db/types";
@@ -9,9 +10,10 @@ import type { Unit } from "@/lib/units";
 import { formatDuration, formatLoad } from "@/lib/units";
 import { deriveScore } from "@/lib/workout/derive";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
+import { prescription } from "@/lib/workout/prescription";
 import { formatScore } from "@/lib/workout/score";
 
-import { saveProgress, saveResult, type LogState, type ProgressState } from "./actions";
+import { saveProgress, saveResult, type LogState } from "./actions";
 
 export function LogForm({
   assignmentId,
@@ -27,7 +29,7 @@ export function LogForm({
   existing: (Result & { movements: MovementResult[] }) | null;
 }) {
   const [state, action, pending] = useActionState<LogState, FormData>(saveResult, {});
-  const [progress, saveDraft] = useActionState<ProgressState, FormData>(saveProgress, {});
+  const router = useRouter();
   const spec = FORMAT_SPECS[workout.format];
   const byMovement = new Map(existing?.movements.map((m) => [m.movementId, m]) ?? []);
 
@@ -58,46 +60,94 @@ export function LogForm({
     Save as you go.
 
     A workout is logged between rounds, not written up afterwards, so anything
-    typed is committed shortly after it stops changing rather than waiting for
-    a button nobody presses until the end. The whole form is posted each time —
-    the result row is an upsert keyed on the assignment — which keeps the
-    autosave and the finish reading exactly the same shape.
+    typed is committed without a button: shortly after it stops changing, the
+    moment the athlete leaves the box, and when the phone is locked or the app
+    is backgrounded. The last two matter most — the natural thing to do after
+    typing a set is to put the phone down, and a debounce alone would lose it.
 
-    Debounced, because the alternative is a write per keystroke; and skipped on
-    the first render, so opening a session does not immediately write a draft
-    for a workout that has not started.
+    The whole form is posted each time — the result row is an upsert keyed on
+    the assignment — which keeps the autosave and the finish reading exactly
+    the same shape. Server actions run one at a time, so saves land in the
+    order they were made.
   */
   const formRef = useRef<HTMLFormElement>(null);
-  const [dirty, setDirty] = useState(0);
-  const [saving, setSaving] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef(0);
+  // Once the finish is submitted nothing else should be sent. MAX(completed)
+  // already stops a late draft reopening the session; this stops it racing.
+  const finishing = useRef(false);
+  const [progress, setProgress] = useState<{ saving: boolean; savedAt?: number; error?: string }>({
+    saving: false,
+  });
+
+  const save = useCallback(async () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const form = formRef.current;
+    if (!form || finishing.current) return;
+
+    inFlight.current += 1;
+    setProgress((p) => ({ ...p, saving: true }));
+    // Built from the form element rather than from state, so the fields that
+    // are not controlled — RPE, scaled, the notes — go with it.
+    const res = await saveProgress({}, new FormData(form));
+    inFlight.current -= 1;
+    setProgress((p) => ({
+      saving: inFlight.current > 0 || timer.current !== null,
+      savedAt: res.savedAt ?? p.savedAt,
+      error: res.error,
+    }));
+  }, []);
+
+  /** Save soon: debounced, because the alternative is a write per keystroke. */
+  const schedule = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setProgress((p) => ({ ...p, saving: true }));
+    timer.current = setTimeout(save, 900);
+  }, [save]);
+
+  /** Save now, if anything is waiting. */
+  const flush = useCallback(async () => {
+    if (timer.current) await save();
+  }, [save]);
 
   useEffect(() => {
-    if (dirty === 0) return;
-    const form = formRef.current;
-    if (!form) return;
-
-    setSaving(true);
-    const timer = setTimeout(() => {
-      // Built from the form element rather than from state, so the fields that
-      // are not controlled — RPE, scaled, the notes — go with it.
-      saveDraft(new FormData(form));
-      setSaving(false);
-    }, 900);
-    return () => {
-      clearTimeout(timer);
-      setSaving(false);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") void flush();
     };
-  }, [dirty, saveDraft]);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+    };
+  }, [flush]);
+
+  /*
+    Opening the screen is starting the session.
+
+    An empty draft is written straight away, so the session reads as in
+    progress everywhere else from the first minute — and a null score is
+    exactly "started, nothing recorded yet". Done here rather than in the page,
+    because a server render that writes would fire on a prefetch. The ref
+    keeps a development double-mount to one write.
+  */
+  const started = useRef(existing !== null);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void save();
+  }, [save]);
 
   const savedNote = progress.error
     ? progress.error
-    : saving
+    : progress.saving
       ? "Saving\u2026"
       : progress.savedAt
         ? "Saved"
         : existing
           ? "Picked up where you left off"
-          : "Saves as you go";
+          : "Started. Saves as you go";
 
   const derived = useMemo(() => {
     // Parsing here is deliberately forgiving: a half-typed "1:" is not an
@@ -126,12 +176,40 @@ export function LogForm({
   }, [logged, workout.format, workout.movements, unit]);
 
   return (
-    // Any input anywhere in the form marks it dirty, which is what drives the
-    // autosave — one handler instead of remembering to wire every field.
-    <form ref={formRef} action={action} onInput={() => setDirty((n) => n + 1)} className="space-y-4">
+    // Input anywhere in the form schedules a save and leaving any box saves at
+    // once — one pair of handlers instead of remembering to wire every field.
+    <form
+      ref={formRef}
+      action={action}
+      onInput={schedule}
+      onBlur={() => void flush()}
+      onSubmit={() => {
+        finishing.current = true;
+        if (timer.current) clearTimeout(timer.current);
+      }}
+      className="space-y-4"
+    >
       <input type="hidden" name="assignmentId" value={assignmentId} />
 
-      <PageTitle sub={`${date} · ${spec.label}`}>{workout.title}</PageTitle>
+      <PageTitle sub={`${date} · ${spec.label}${workout.capSeconds ? ` · ${formatDuration(workout.capSeconds)} cap` : ""}`}>
+        {workout.title}
+      </PageTitle>
+
+      {/* Pinned, so the running result and whether it is safe to put the
+          phone down stay in view however far down the movements you are. */}
+      <div
+        role="status"
+        className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b border-black/10 bg-chalk/95 px-4 py-2 text-sm backdrop-blur dark:border-white/10 dark:bg-iron/95"
+      >
+        <span className="font-semibold tabular-nums">{derived ?? "\u2014"}</span>
+        <span
+          className={
+            progress.error ? "text-xs font-medium text-rust dark:text-orange-300" : "text-xs opacity-70"
+          }
+        >
+          {savedNote}
+        </span>
+      </div>
 
       {workout.description ? (
         <Card>
@@ -142,29 +220,28 @@ export function LogForm({
 
       {workout.movements.length > 0 ? (
         <Card>
-          <h2 className="mb-3 font-semibold">Movements</h2>
+          <h2 className="mb-1 font-semibold">The work</h2>
           <p className="mb-4 text-xs opacity-60">
-            What you actually did. Not what you meant to do. Blank means not recorded.
+            What was written, then what you actually did. Blank means not recorded.
           </p>
           <div className="space-y-5">
             {workout.movements.map((m, index) => {
               const prior = byMovement.get(m.id);
               const row = logged[index]!;
-              const prescribed = [
-                m.sets && m.reps ? `${m.sets} × ${m.reps}` : m.reps ? `${m.reps} reps` : null,
-                m.loadG ? formatLoad(m.loadG, unit) : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
+              const prescribed = prescription(m, unit);
 
               return (
                 <fieldset key={m.id} className="border-t border-black/10 pt-4 dark:border-white/10">
-                  <legend className="text-sm font-medium">
+                  {/* The movement as written sits directly above its boxes, so
+                      the prescription is in view while the set is logged. */}
+                  <legend className="font-semibold">
+                    <span className="opacity-50 tabular-nums">{index + 1}. </span>
                     {m.name}
-                    {prescribed ? (
-                      <span className="opacity-60"> · prescribed {prescribed}</span>
-                    ) : null}
                   </legend>
+                  {prescribed ? <p className="mt-1 text-sm tabular-nums">{prescribed}</p> : null}
+                  {m.notes ? (
+                    <p className="mt-1 whitespace-pre-line text-sm opacity-70">{m.notes}</p>
+                  ) : null}
                   {/* Controlled, so the result above keeps up as this is typed. */}
                   <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <Field label="Reps">
@@ -231,14 +308,8 @@ export function LogForm({
           </div>
           <p className="max-w-[55%] text-right text-xs opacity-60">{spec.hint}</p>
         </div>
-        <p className="mt-3 flex flex-wrap items-center gap-2 text-xs opacity-60">
-          <span>Worked out from the movements above, as you fill them in.</span>
-          <span
-            role="status"
-            className={progress.error ? "font-medium text-rust dark:text-orange-300" : "font-medium"}
-          >
-            {savedNote}
-          </span>
+        <p className="mt-3 text-xs opacity-60">
+          Worked out from the movements above, as you fill them in.
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -284,10 +355,18 @@ export function LogForm({
         </Button>
         <Link
           href="/"
+          onClick={async (e) => {
+            // Nothing to press to keep the work: leaving saves whatever was
+            // still waiting on the debounce before it goes.
+            if (!timer.current) return;
+            e.preventDefault();
+            await flush();
+            router.push("/");
+          }}
           className="inline-flex min-h-11 items-center justify-center rounded-lg border border-black/15 px-4 dark:border-white/20"
         >
-          {/* Not "cancel": the work so far is already saved. */}
-          Come back later
+          {/* Not "cancel", and not a save: the work is already kept. */}
+          Back later
         </Link>
       </div>
     </form>

@@ -5,26 +5,12 @@ import { MoveWorkout } from "@/components/move-workout";
 import { RemoveWorkout } from "@/components/remove-workout";
 import type { DayEntry } from "@/lib/db/types";
 import type { Unit } from "@/lib/units";
-import { formatDuration, formatLoad } from "@/lib/units";
+import { formatDuration } from "@/lib/units";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
 import { PHASE_SPECS } from "@/lib/workout/phases";
+import { prescription } from "@/lib/workout/prescription";
 import { trackLength } from "@/lib/workout/tracks";
 import { formatScore, scoreFromValue } from "@/lib/workout/score";
-
-/** The prescription for one movement, rendered the way it is written down. */
-function prescription(
-  m: { reps: number | null; sets: number | null; loadG: number | null; distanceM: number | null; seconds: number | null },
-  unit: Unit,
-): string {
-  const bits: string[] = [];
-  if (m.sets && m.reps) bits.push(`${m.sets} × ${m.reps}`);
-  else if (m.reps) bits.push(`${m.reps} reps`);
-  else if (m.sets) bits.push(`${m.sets} sets`);
-  if (m.distanceM) bits.push(`${m.distanceM} m`);
-  if (m.seconds) bits.push(formatDuration(m.seconds));
-  if (m.loadG) bits.push(formatLoad(m.loadG, unit));
-  return bits.join(" · ");
-}
 
 export function WorkoutCard({
   entry,
@@ -93,7 +79,13 @@ export function WorkoutCard({
                 ? "Logged"
                 : "In progress"
               : formatScore(scoreFromValue(result.scoreKind, result.scoreValue), unit)}
-            {result.completed ? (result.scaled ? " (scaled)" : "") : " · in progress"}
+            {result.completed
+              ? result.scaled
+                ? " (scaled)"
+                : ""
+              : result.scoreValue === null
+                ? ""
+                : " · in progress"}
           </span>
         ) : null}
       </div>
@@ -124,9 +116,11 @@ export function WorkoutCard({
               href={`/log/${assignment.id}`}
               className="inline-flex min-h-11 items-center justify-center rounded-lg bg-iron px-4 font-medium text-chalk dark:bg-chalk dark:text-iron"
             >
-              {/* "Carry on" matters: a session part-logged and walked away
+              {/* "Start it", not "Log it": the logging screen is where the
+                  session is done, with the work written out beside the boxes.
+                  "Carry on" matters: a session part-logged and walked away
                   from should invite you back, not look like a fresh start. */}
-              {!result ? "Log it" : result.completed ? "Fix the record" : "Carry on"}
+              {!result ? "Start it" : result.completed ? "Fix the record" : "Carry on"}
             </Link>
           ) : (
             <span />
