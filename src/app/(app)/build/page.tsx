@@ -19,8 +19,9 @@ export default async function BuildPage() {
       <BuildForms
         athletes={athletes.map((a) => ({ id: a.id, name: a.name, phase: a.phase, track: a.track }))}
         defaultAthleteId={owner.id}
-        weekStart={weekStart(today())}
-        today={today()}
+        // The owner's calendar: they are the one choosing the dates.
+        weekStart={weekStart(today(owner.timeZone))}
+        today={today(owner.timeZone)}
         unit={owner.unit}
         aiReady={isConfigured()}
       />

@@ -15,7 +15,7 @@ const WEEKS = 12;
 export default async function AnalyticsPage() {
   const user = await requireUser();
   const store = getStore();
-  const since = addDays(today(), -WEEKS * 7);
+  const since = addDays(today(user.timeZone), -WEEKS * 7);
 
   const byWeek = store.sessionsByWeek(user.id, since);
   const mix = store.formatMix(user.id, since);

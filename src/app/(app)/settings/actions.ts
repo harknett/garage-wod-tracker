@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth/guard";
 import { getStore } from "@/lib/db";
+import { isTimeZone } from "@/lib/timezones";
 import { isUnit } from "@/lib/units";
 import { isTrack } from "@/lib/workout/tracks";
 
@@ -20,10 +21,12 @@ export async function updateProfile(
   const name = String(data.get("name") ?? "").trim();
   const unit = String(data.get("unit") ?? "");
   const track = String(data.get("track") ?? "");
+  const timeZone = String(data.get("timeZone") ?? "");
 
   if (!name) return { error: "A name is needed." };
   if (!isUnit(unit)) return { error: "Pick kilograms or pounds." };
   if (!isTrack(track)) return { error: "Pick a track." };
+  if (!isTimeZone(timeZone)) return { error: "Pick a time zone from the list." };
 
   const store = getStore();
   store.setName(user.id, name);
@@ -33,6 +36,8 @@ export async function updateProfile(
   // The athlete's own choice: how often they intend to train, and for how
   // long. It shapes the next week written for them, not the ones already up.
   store.setTrack(user.id, track);
+  // Decides which day "today" is. Stored dates do not move with it.
+  store.setTimeZone(user.id, timeZone);
 
   revalidatePath("/", "layout");
   revalidatePath("/build");

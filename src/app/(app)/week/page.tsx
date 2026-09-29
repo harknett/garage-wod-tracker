@@ -46,7 +46,7 @@ export default async function WeekPage({
   // An unparseable ?start= is a stale link or a typed URL, not an error worth
   // a page for; fall back to this week.
   const start =
-    params.start && isValidDate(params.start) ? weekStart(params.start) : weekStart(today());
+    params.start && isValidDate(params.start) ? weekStart(params.start) : weekStart(today(subject.timeZone));
   const end = addDays(start, 6);
 
   const entries = store.entriesBetween(subject.id, start, end);

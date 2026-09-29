@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getStore } from "@/lib/db";
+import { addDays, today } from "@/lib/dates";
 import type { User } from "@/lib/db/types";
 import { formatLoad } from "@/lib/units";
 import type { Unit } from "@/lib/units";
@@ -11,10 +12,6 @@ import { formatScore, scoreFromValue } from "@/lib/workout/score";
 /** How far back the model is shown. Eight weeks is about two training blocks. */
 export const CONTEXT_WEEKS = 8;
 
-function weeksAgo(weeks: number): string {
-  const d = new Date(Date.now() - weeks * 7 * 86_400_000);
-  return d.toISOString().slice(0, 10);
-}
 
 /**
  * What this athlete has actually been doing, as plain text for the prompt.
@@ -28,7 +25,7 @@ function weeksAgo(weeks: number): string {
  */
 export function trainingContext(user: User): string {
   const store = getStore();
-  const since = weeksAgo(CONTEXT_WEEKS);
+  const since = addDays(today(user.timeZone), -CONTEXT_WEEKS * 7);
 
   const results = store.resultsSince(user.id, since);
   if (results.length === 0) {

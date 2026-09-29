@@ -228,4 +228,13 @@ export const MIGRATIONS: string[] = [
     CHECK (completed IN (0,1));
   CREATE INDEX idx_results_completed ON results(workout_id, completed);
   `,
+
+  // The zone an athlete trains in, so "today" is their calendar day rather
+  // than the server's. The server runs in UTC; without this, an evening
+  // session in New York was logged against tomorrow. Everyone starts on US
+  // Eastern, where the gym is. No CHECK: the set of IANA names is the
+  // runtime's to know, so the app validates it at the boundary.
+  `
+  ALTER TABLE users ADD COLUMN time_zone TEXT NOT NULL DEFAULT 'America/New_York';
+  `,
 ];

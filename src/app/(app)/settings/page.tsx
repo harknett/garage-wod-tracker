@@ -28,7 +28,7 @@ export default async function SettingsPage() {
         </p>
       </Card>
 
-      <ProfileForm name={user.name} unit={user.unit} track={user.track} />
+      <ProfileForm name={user.name} unit={user.unit} track={user.track} timeZone={user.timeZone} />
 
       <Card className="mt-4">
         <h2 className="mb-3 font-semibold">Account</h2>

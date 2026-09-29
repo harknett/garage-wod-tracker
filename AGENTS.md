@@ -53,8 +53,15 @@ someone is reading them mid-session with chalk on their hands.
   (`canLog`, `canMove`, `canRemove`) rather than one read-only flag, since a
   coach sits between the two states.
 - **Weeks run Sunday to Saturday.** `weekStart` returns the Sunday on or
-  before a date, and `DAY_NAMES` is Sunday-first to match `getDay()`. Changing
-  this moves every planner view and the date the planner snaps to.
+  before a date, and `DAY_NAMES` is Sunday-first to match `getUTCDay()`.
+  Changing this moves every planner view and the date the planner snaps to.
+- **"Today" is the athlete's day, never the server's.** The host runs in UTC.
+  `today(timeZone)` takes the zone explicitly — pass `user.timeZone` (the
+  subject's, when an owner views an athlete) — and nothing may call
+  `new Date()` to work out a date. All other date arithmetic in `dates.ts` is
+  done in UTC as pure calendar maths, so it cannot drift with the server's
+  zone or daylight saving. Stored dates are calendar dates, not instants:
+  changing an athlete's zone moves nothing already on the board.
 - **Only an owner can view another athlete**, the subject comes from
   `?athlete=`, and the store's checks are the real boundary — the page hiding
   buttons is a courtesy, not the enforcement.

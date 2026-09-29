@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
+import { DEFAULT_TIME_ZONE } from "@/lib/timezones";
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
 import type { Phase } from "@/lib/workout/phases";
@@ -42,6 +43,7 @@ function mapUser(r: Row): User {
     unit: str(r.unit) as Unit,
     phase: str(r.phase) as Phase,
     track: str(r.track) as Track,
+    timeZone: str(r.time_zone),
     mustChangePassword: bool(r.must_change_password),
     createdAt: str(r.created_at),
   };
@@ -216,12 +218,15 @@ export class Store {
     unit: Unit;
     phase: Phase;
     track: Track;
+    /** Defaults to US Eastern, where the gym is. */
+    timeZone?: string;
     mustChangePassword: boolean;
   }): User {
     const row = this.db
       .prepare(
-        `INSERT INTO users (email, name, password_hash, role, unit, phase, track, must_change_password)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+        `INSERT INTO users
+           (email, name, password_hash, role, unit, phase, track, time_zone, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
       )
       .get(
         input.email.trim().toLowerCase(),
@@ -231,6 +236,7 @@ export class Store {
         input.unit,
         input.phase,
         input.track,
+        input.timeZone ?? DEFAULT_TIME_ZONE,
         input.mustChangePassword ? 1 : 0,
       ) as Row;
     return mapUser(row);
@@ -281,6 +287,17 @@ export class Store {
    */
   setTrack(userId: number, track: Track): void {
     this.db.prepare("UPDATE users SET track = ? WHERE id = ?").run(track, userId);
+  }
+
+  /**
+   * Change the zone an athlete's days are counted in.
+   *
+   * Nothing stored moves: sessions and results carry calendar dates, not
+   * instants, so a Tuesday session stays on Tuesday. Only which day "today"
+   * is changes.
+   */
+  setTimeZone(userId: number, timeZone: string): void {
+    this.db.prepare("UPDATE users SET time_zone = ? WHERE id = ?").run(timeZone, userId);
   }
 
   setName(userId: number, name: string): void {

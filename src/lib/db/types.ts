@@ -16,6 +16,8 @@ export interface User {
   phase: Phase;
   /** The shape of their week: how often they train, and for how long. */
   track: Track;
+  /** IANA zone the athlete trains in. Decides what "today" means for them. */
+  timeZone: string;
   mustChangePassword: boolean;
   createdAt: string;
 }

@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
   const user = await requireUser();
-  const date = today();
+  // The athlete's day, not the server's: the host runs in UTC.
+  const date = today(user.timeZone);
   const entries = getStore().entriesBetween(user.id, date, date);
 
   return (
