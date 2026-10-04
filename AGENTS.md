@@ -67,7 +67,9 @@ someone is reading them mid-session with chalk on their hands.
   buttons is a courtesy, not the enforcement.
 - **`results.date` is a denormalised copy of the assignment's date.** Moving a
   session must update both, or it sits on one day in the planner and another
-  in the record.
+  in the record. `moveWeek` does the same for every session in a week, shifts
+  any plan that started that week, and is all or nothing: one clash and
+  nothing moves.
 - **Loads are whole grams, durations are seconds.** Kilograms and pounds are
   renderings. Convert at the boundary — form input and AI import — and nowhere
   else.

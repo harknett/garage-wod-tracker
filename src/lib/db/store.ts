@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
+import { addDays, daysBetween, weekStart } from "@/lib/dates";
 import { DEFAULT_TIME_ZONE } from "@/lib/timezones";
 import type { Unit } from "@/lib/units";
 import type { Format, ScoreKind } from "@/lib/workout/formats";
@@ -528,6 +529,89 @@ export class Store {
       this.db.prepare("UPDATE assignments SET date = ? WHERE id = ?").run(date, id);
       this.db.prepare("UPDATE results SET date = ? WHERE assignment_id = ?").run(date, id);
       return true;
+    });
+  }
+
+  /**
+   * The first week, from `fromWeek` on, with nothing on it for this athlete.
+   *
+   * What the Build screen offers by default: a coach writing the next block
+   * almost always means the next empty week, and defaulting to the current
+   * one invited writing a second week on top of the first. `fromWeek` is
+   * itself a candidate, so a week nobody has programmed yet is offered first.
+   * Gives up after a year and returns the week after the last programmed one
+   * rather than looping forever on a long-booked athlete.
+   */
+  firstOpenWeek(userId: number, fromWeek: string): string {
+    const dates = (
+      this.db
+        .prepare("SELECT DISTINCT date FROM assignments WHERE user_id = ? AND date >= ? ORDER BY date")
+        .all(userId, fromWeek) as Row[]
+    ).map((r) => str(r.date));
+    const booked = new Set(dates.map(weekStart));
+    let week = fromWeek;
+    for (let i = 0; i < 53 && booked.has(week); i++) week = addDays(week, 7);
+    return week;
+  }
+
+  /**
+   * Move every session in one week to another week, each keeping its weekday.
+   *
+   * For a week written into the wrong slot: the whole block shifts together
+   * rather than being dragged across one session at a time. Results move with
+   * their sessions (`results.date` is a copy, as in `moveAssignment`), and a
+   * plan that started in the old week now starts in the new one, so the week
+   * still reads as written together.
+   *
+   * Sessions already in the target week stay where they are. The move is all
+   * or nothing: if any session would land on a day that already holds the
+   * same workout, nothing moves and the clash is reported.
+   *
+   * Same actor rule as `moveAssignment`: the athlete, or any owner.
+   */
+  moveWeek(
+    userId: number,
+    fromWeek: string,
+    toWeek: string,
+    actor: { id: number; role: Role },
+  ): { moved: number; joined: number } | { error: string } {
+    if (userId !== actor.id && actor.role !== "owner") return { error: "That week is not yours to move." };
+    if (weekStart(fromWeek) !== fromWeek || weekStart(toWeek) !== toWeek) {
+      return { error: "Weeks start on a Sunday." };
+    }
+    if (fromWeek === toWeek) return { error: "That is the week it is already in." };
+
+    return this.transaction(() => {
+      const inWeek = (start: string) =>
+        (
+          this.db
+            .prepare("SELECT * FROM assignments WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date, position")
+            .all(userId, start, addDays(start, 6)) as Row[]
+        ).map(mapAssignment);
+
+      const moving = inWeek(fromWeek);
+      if (moving.length === 0) return { error: "There is nothing in that week to move." };
+      const already = inWeek(toWeek);
+
+      const shift = daysBetween(fromWeek, toWeek);
+      const taken = new Set(already.map((a) => `${a.date}/${a.workoutId}`));
+      const clash = moving.find((a) => taken.has(`${addDays(a.date, shift)}/${a.workoutId}`));
+      if (clash) {
+        return { error: "The target week already has one of these workouts on the same day. Nothing was moved." };
+      }
+
+      const moveOne = this.db.prepare("UPDATE assignments SET date = ? WHERE id = ?");
+      const moveResult = this.db.prepare("UPDATE results SET date = ? WHERE assignment_id = ?");
+      for (const a of moving) {
+        const date = addDays(a.date, shift);
+        moveOne.run(date, a.id);
+        moveResult.run(date, a.id);
+      }
+      this.db
+        .prepare("UPDATE plans SET start_date = date(start_date, ?) WHERE user_id = ? AND start_date BETWEEN ? AND ?")
+        .run(`${shift >= 0 ? "+" : ""}${shift} days`, userId, fromWeek, addDays(fromWeek, 6));
+
+      return { moved: moving.length, joined: already.length };
     });
   }
 

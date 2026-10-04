@@ -17,6 +17,8 @@ interface Athlete {
   name: string;
   phase: Phase;
   track: Track;
+  /** The first week from now with nothing programmed for them. */
+  openWeek: string;
 }
 
 /** Spare movement rows, so adding a movement needs no JavaScript round-trip. */
@@ -25,7 +27,6 @@ const MOVEMENT_ROWS = 8;
 export function BuildForms(props: {
   athletes: Athlete[];
   defaultAthleteId: number;
-  weekStart: string;
   today: string;
   unit: Unit;
   aiReady: boolean;
@@ -50,12 +51,10 @@ export function BuildForms(props: {
 function AiForm({
   athletes,
   defaultAthleteId,
-  weekStart,
   aiReady,
 }: {
   athletes: Athlete[];
   defaultAthleteId: number;
-  weekStart: string;
   aiReady: boolean;
 }) {
   const [state, action, pending] = useActionState<BuildState, FormData>(generate, {});
@@ -71,6 +70,9 @@ function AiForm({
   // The track decides how many sessions a week holds, so changing it moves the
   // day count with it. Still a plain input: a coach writing four days on the
   // short track is making a choice, not a mistake.
+  // Follows the athlete: each one's first empty week. Still editable — this is
+  // a default, not a rule.
+  const [start, setStart] = useState(athletes.find((a) => a.id === defaultAthleteId)?.openWeek ?? "");
   const [days, setDays] = useState(
     TRACK_SPECS[athletes.find((a) => a.id === defaultAthleteId)?.track ?? "long"].sessions,
   );
@@ -80,6 +82,7 @@ function AiForm({
     const athlete = athletes.find((a) => a.id === id);
     if (!athlete) return;
     setPhase(athlete.phase);
+    setStart(athlete.openWeek);
     chooseTrack(athlete.track);
   }
 
@@ -114,8 +117,21 @@ function AiForm({
               ))}
             </select>
           </Field>
-          <Field label="Week beginning" hint="Snapped to the Sunday the week starts on.">
-            <input name="start" type="date" defaultValue={weekStart} className={inputClass} />
+          <Field
+            label="Week beginning"
+            hint={
+              start === athletes.find((a) => a.id === athleteId)?.openWeek
+                ? "Their first week with nothing on it yet."
+                : "Snapped to the Sunday the week starts on."
+            }
+          >
+            <input
+              name="start"
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className={inputClass}
+            />
           </Field>
           <Field label="Sessions" hint={`${trackLength(track)} each`}>
             <input

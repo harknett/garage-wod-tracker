@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { MoveWeek } from "@/components/move-week";
 import { WorkoutCard } from "@/components/workout-card";
 import { Card, Empty, PageTitle } from "@/components/ui";
 import { requireUser } from "@/lib/auth/guard";
@@ -92,7 +93,7 @@ export default async function WeekPage({
         </p>
       ) : null}
 
-      <nav className="mb-5 flex gap-2">
+      <nav className="mb-5 flex flex-wrap gap-2">
         <Link
           href={link(addDays(start, -7))}
           className="min-h-11 rounded-lg border border-black/15 px-4 py-2 text-sm dark:border-white/20"
@@ -105,6 +106,10 @@ export default async function WeekPage({
         >
           Next →
         </Link>
+        {/* For a block written into the wrong week: move all of it at once. */}
+        {canRearrange && entries.length > 0 ? (
+          <MoveWeek athleteId={subject.id} start={start} sessions={entries.length} />
+        ) : null}
       </nav>
 
       {/* What the model was going for, once per week it wrote. */}

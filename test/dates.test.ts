@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addDays, dayName, isValidDate, shortDate, today, weekStart } from "@/lib/dates";
+import { addDays, dayName, daysBetween, isValidDate, shortDate, today, weekStart } from "@/lib/dates";
 
 describe("dates", () => {
   it("reads today in the athlete's zone, not the server's", () => {
@@ -59,5 +59,13 @@ describe("dates", () => {
   it("rejects malformed input", () => {
     expect(isValidDate("21-09-2026")).toBe(false);
     expect(isValidDate("2026-13-01")).toBe(false);
+  });
+});
+
+describe("daysBetween", () => {
+  it("counts whole days either way, across DST", () => {
+    expect(daysBetween("2026-10-04", "2026-10-18")).toBe(14);
+    expect(daysBetween("2026-10-18", "2026-10-04")).toBe(-14);
+    expect(daysBetween("2026-11-01", "2026-11-08")).toBe(7);
   });
 });

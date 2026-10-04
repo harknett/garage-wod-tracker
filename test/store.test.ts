@@ -986,3 +986,143 @@ describe("logging as you go", () => {
     });
   });
 });
+
+describe("the first open week", () => {
+  // 2026-10-04 is a Sunday.
+  it("offers this week when nothing is on it", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    expect(store.firstOpenWeek(user.id, "2026-10-04")).toBe("2026-10-04");
+  });
+
+  it("skips weeks that already have anything on them, even one session", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const w = makeWorkout();
+    store.assign(w, user.id, "2026-10-06"); // this week, Tuesday
+    store.assign(w, user.id, "2026-10-17"); // next week, Saturday
+    expect(store.firstOpenWeek(user.id, "2026-10-04")).toBe("2026-10-18");
+  });
+
+  it("finds a gap between programmed weeks", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const w = makeWorkout();
+    store.assign(w, user.id, "2026-10-05");
+    store.assign(w, user.id, "2026-10-19"); // the week after next
+    expect(store.firstOpenWeek(user.id, "2026-10-04")).toBe("2026-10-11");
+  });
+
+  it("only looks at that athlete's weeks", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    store.assign(makeWorkout(), sam.id, "2026-10-05");
+    expect(store.firstOpenWeek(alex.id, "2026-10-04")).toBe("2026-10-04");
+  });
+});
+
+describe("moving a whole week", () => {
+  const owner = { id: 999, role: "owner" as Role };
+
+  function weekOf(userId: number, start: string) {
+    return store
+      .entriesBetween(userId, start, start.replace(/\d\d$/, (d) => String(Number(d) + 6).padStart(2, "0")))
+      .map((e) => [e.assignment.date, e.workout.title]);
+  }
+
+  it("shifts every session, keeping each on its weekday", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.assign(makeWorkout("Mon"), user.id, "2026-10-05");
+    store.assign(makeWorkout("Wed"), user.id, "2026-10-07");
+    store.assign(makeWorkout("Sat"), user.id, "2026-10-10");
+
+    expect(store.moveWeek(user.id, "2026-10-04", "2026-10-18", owner)).toEqual({ moved: 3, joined: 0 });
+    expect(weekOf(user.id, "2026-10-04")).toEqual([]);
+    expect(weekOf(user.id, "2026-10-18")).toEqual([
+      ["2026-10-19", "Mon"],
+      ["2026-10-21", "Wed"],
+      ["2026-10-24", "Sat"],
+    ]);
+  });
+
+  it("moves backwards as well as forwards", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.assign(makeWorkout("Thu"), user.id, "2026-10-22");
+    expect(store.moveWeek(user.id, "2026-10-18", "2026-10-04", owner)).toEqual({ moved: 1, joined: 0 });
+    expect(weekOf(user.id, "2026-10-04")).toEqual([["2026-10-08", "Thu"]]);
+  });
+
+  it("takes results with their sessions", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.assign(makeWorkout(), user.id, "2026-10-05");
+    const [entry] = store.entriesBetween(user.id, "2026-10-05", "2026-10-05");
+    store.saveResult(
+      {
+        assignmentId: entry!.assignment.id,
+        scoreValue: null,
+        scoreKind: "rounds",
+        scaled: false,
+        completed: false,
+        rpe: null,
+        notes: "",
+        movements: [],
+      },
+      user.id,
+    );
+    store.moveWeek(user.id, "2026-10-04", "2026-10-11", { id: user.id, role: "member" });
+    expect(store.resultFor(entry!.assignment.id)!.date).toBe("2026-10-12");
+  });
+
+  it("moves the plan's start with the week it was written for", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const planId = store.createPlan({ userId: user.id, startDate: "2026-10-04", phase: null, track: null, summary: "" });
+    store.assign(makeWorkout(), user.id, "2026-10-05");
+    store.moveWeek(user.id, "2026-10-04", "2026-10-25", owner);
+    expect(store.findPlan(planId)!.startDate).toBe("2026-10-25");
+  });
+
+  it("leaves sessions already in the target week where they are, and says how many", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    store.assign(makeWorkout("Moving"), user.id, "2026-10-05");
+    store.assign(makeWorkout("Staying"), user.id, "2026-10-14");
+    expect(store.moveWeek(user.id, "2026-10-04", "2026-10-11", owner)).toEqual({ moved: 1, joined: 1 });
+    expect(weekOf(user.id, "2026-10-11")).toEqual([
+      ["2026-10-12", "Moving"],
+      ["2026-10-14", "Staying"],
+    ]);
+  });
+
+  it("moves nothing if any session would land on a day that already holds it", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    const shared = makeWorkout("Shared");
+    store.assign(makeWorkout("Other"), user.id, "2026-10-06");
+    store.assign(shared, user.id, "2026-10-05");
+    store.assign(shared, user.id, "2026-10-12");
+    const result = store.moveWeek(user.id, "2026-10-04", "2026-10-11", owner);
+    expect(result).toEqual({ error: expect.stringMatching(/Nothing was moved/) });
+    // All or nothing: Tuesday's session did not move either.
+    expect(weekOf(user.id, "2026-10-04")).toHaveLength(2);
+  });
+
+  it("will not let one athlete move another's week", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    store.assign(makeWorkout(), alex.id, "2026-10-05");
+    expect(store.moveWeek(alex.id, "2026-10-04", "2026-10-11", { id: sam.id, role: "member" })).toEqual({
+      error: expect.stringMatching(/not yours/),
+    });
+  });
+
+  it("refuses weeks that do not start on a Sunday, and empty weeks", () => {
+    const user = makeUser("Alex", "alex@example.com");
+    expect(store.moveWeek(user.id, "2026-10-05", "2026-10-11", owner)).toEqual({ error: expect.stringMatching(/Sunday/) });
+    expect(store.moveWeek(user.id, "2026-10-04", "2026-10-11", owner)).toEqual({ error: expect.stringMatching(/nothing/) });
+  });
+
+  it("only moves that athlete's sessions", () => {
+    const alex = makeUser("Alex", "alex@example.com");
+    const sam = makeUser("Sam", "sam@example.com");
+    const w = makeWorkout();
+    store.assign(w, alex.id, "2026-10-05");
+    store.assign(w, sam.id, "2026-10-05");
+    store.moveWeek(alex.id, "2026-10-04", "2026-10-11", owner);
+    expect(weekOf(sam.id, "2026-10-04")).toEqual([["2026-10-05", "Cindy"]]);
+  });
+});

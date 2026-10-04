@@ -52,6 +52,11 @@ export function addDays(date: string, days: number): string {
   return fromUtc(at);
 }
 
+/** Whole days from `from` to `to`; negative when `to` is earlier. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((utc(to).getTime() - utc(from).getTime()) / 86_400_000);
+}
+
 /** The Sunday on or before a date. Weeks start Sunday. */
 export function weekStart(date: string): string {
   // getUTCDay() is already Sunday-based: 0 on Sunday through 6 on Saturday,

@@ -16,7 +16,7 @@ phone. Next.js, SQLite, no account anywhere else.
 | **AI weeks** | Claude writes a cohesive week against the athlete's phase, their last eight weeks of logged results, their RPE and notes, and the gym's equipment list. |
 | **Equipment** | An inventory of what the gym actually owns. The model programs to it exactly, and kit marked out of action is never written into a session. |
 | **Logging** | Per-movement reps, load, time and distance, saved as you go rather than written up at the end. The workout's result is derived from those as you type, never entered separately. Built for a phone, mid-session, with one hand. |
-| **Planning** | Sessions can be moved to any other day from the week view, or removed; a logged result moves with them. A week written in one go stays visibly grouped, with the model's own account of what it was for. |
+| **Planning** | Sessions can be moved to any other day from the week view, or removed; a logged result moves with them. A whole week can be moved to another week in one go, each session keeping its weekday. A week written in one go stays visibly grouped, with the model's own account of what it was for. Build offers each athlete's first empty week by default. |
 | **Coaching** | The owner can look at any athlete's week, rearrange it and drop sessions from it. Logging stays with the athlete. |
 | **Units** | Loads in kilograms or pounds, per athlete. Both are stored as grams, so two people logging the same barbell land on the same number. |
 | **Leaderboard** | Any workout two or more athletes have done, ranked in the direction that format actually runs. |
