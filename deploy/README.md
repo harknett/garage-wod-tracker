@@ -228,11 +228,9 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Writing a week is ONE non-streaming request to Claude, and it routinely
-    # runs past nginx's 60-second default. The symptom is a 504 in the browser
-    # after a minute while the week generates fine and is saved — the reply
-    # just never reaches you, so the coach writes it again and gets two.
-    # Five minutes is comfortably clear.
+    # Writing a week runs in the background and the Build page polls for it,
+    # so no request waits on the model any more. These stay as headroom for
+    # anything else slow; they are no longer what keeps Build working.
     proxy_read_timeout 300s;
     proxy_send_timeout 300s;
 

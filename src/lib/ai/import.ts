@@ -3,6 +3,8 @@ import "server-only";
 import { getStore } from "@/lib/db";
 import type { NewMovement } from "@/lib/db/types";
 import { addDays } from "@/lib/dates";
+import { loadToGrams } from "@/lib/units";
+import type { Unit } from "@/lib/units";
 import { FORMAT_SPECS } from "@/lib/workout/formats";
 import type { Phase } from "@/lib/workout/phases";
 import type { Track } from "@/lib/workout/tracks";
@@ -17,8 +19,9 @@ import type { GeneratedWeek } from "./schema";
  * other. The model's summary is stored there too — it is the only account of
  * why the week looks the way it does, and it used to be shown once and lost.
  *
- * Two conversions happen here and nowhere else: kilograms become stored grams,
- * and a day offset becomes a calendar date. Doing both at the boundary keeps
+ * Two conversions happen here and nowhere else: a load in the unit the week
+ * was written in becomes stored grams, and a day offset becomes a calendar
+ * date. `unit` must be the one `generateWeek` asked for. Doing both at the boundary keeps
  * the model's output in the model's own units right up until it lands.
  *
  * The whole import is one transaction. A half-imported week - three days in
@@ -31,6 +34,7 @@ export function importWeek(
   startDate: string,
   phase: Phase,
   track: Track,
+  unit: Unit,
 ): number[] {
   const store = getStore();
 
@@ -48,7 +52,7 @@ export function importWeek(
         name: m.name,
         reps: m.reps,
         sets: m.sets,
-        loadG: m.load_kg === null ? null : Math.round(m.load_kg * 1000),
+        loadG: m.load === null ? null : loadToGrams(m.load, unit),
         distanceM: m.distance_m,
         seconds: m.seconds,
         notes: m.notes,

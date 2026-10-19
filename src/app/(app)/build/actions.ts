@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { NotConfiguredError, generateWeek } from "@/lib/ai/generate";
 import { importWeek } from "@/lib/ai/import";
+import { jobStatus, startJob } from "@/lib/ai/jobs";
 import { requireOwner } from "@/lib/auth/guard";
 import { getStore } from "@/lib/db";
 import type { NewMovement } from "@/lib/db/types";
@@ -18,17 +20,24 @@ export interface BuildState {
   ok?: string;
   /** What the model said it was going for, shown back to the coach. */
   summary?: string;
+  /** A week still being written; the page polls `buildStatus` with it. */
+  jobId?: string;
 }
 
 /**
  * Write a week with the model, then put it in an athlete's planner.
  *
- * Generation and import are deliberately one action: a week the coach has to
+ * Generation and import are deliberately one job: a week the coach has to
  * separately remember to save is a week that gets lost when the tab closes.
  * The coach edits afterwards, against real rows.
+ *
+ * The job runs after this action has answered. Writing a week takes longer
+ * than nginx will hold a request open, and a 504 here took the page down while
+ * the week saved anyway — so the coach wrote it again and got two. The page
+ * gets a job id back at once and asks `buildStatus` until the week is in.
  */
 export async function generate(_prev: BuildState, data: FormData): Promise<BuildState> {
-  await requireOwner();
+  const owner = await requireOwner();
   const store = getStore();
 
   const athleteId = Number(data.get("athleteId"));
@@ -55,32 +64,74 @@ export async function generate(_prev: BuildState, data: FormData): Promise<Build
   const trackRaw = String(data.get("track") ?? athlete.track);
   if (!isTrack(trackRaw)) return { error: "Pick a track." };
 
-  try {
-    const week = await generateWeek({
-      prompt: String(data.get("prompt") ?? ""),
-      days,
-      athlete,
-      phase: phaseRaw,
-      track: trackRaw,
-    });
-    importWeek(week, athlete.id, start, phaseRaw, trackRaw);
-    revalidatePath("/week");
-    revalidatePath("/");
+  const prompt = String(data.get("prompt") ?? "");
+
+  // Keyed on athlete and week, so a second press while this one is running
+  // follows the first job instead of writing the week twice.
+  const job = startJob<BuildState>(
+    owner.id,
+    `${athlete.id}:${start}`,
+    async () => {
+      try {
+        const week = await generateWeek({
+          prompt,
+          days,
+          athlete,
+          phase: phaseRaw,
+          track: trackRaw,
+        });
+        // The athlete's unit, the same one generateWeek prescribed in.
+        importWeek(week, athlete.id, start, phaseRaw, trackRaw, athlete.unit);
+        return {
+          ok:
+            `Wrote ${week.workouts.length} session(s) for ${athlete.name} on the ` +
+            `${TRACK_SPECS[trackRaw].label.toLowerCase()} track, ` +
+            `${PHASE_SPECS[phaseRaw].label.toLowerCase()}, starting ${start}.`,
+          summary: week.summary,
+        };
+      } catch (err) {
+        if (err instanceof NotConfiguredError) return { error: err.message };
+        // The API can be down, rate-limited or refuse; none of that should take
+        // the page with it, and the coach can still write the week by hand.
+        return {
+          error: err instanceof Error ? err.message : "The model could not be reached.",
+        };
+      }
+    },
+    (err) => ({ error: err instanceof Error ? err.message : "Writing the week failed." }),
+  );
+  // Tells Next the response is not the end of the work. On this self-hosted
+  // server the job would run regardless; this keeps it honest if that changes.
+  after(() => job.done);
+
+  return { jobId: job.id };
+}
+
+/**
+ * Where a week being written has got to. Returns the job id back while it is
+ * still running, and the finished result once it is in.
+ */
+export async function buildStatus(jobId: string): Promise<BuildState> {
+  const owner = await requireOwner();
+  const status = jobStatus<BuildState>(owner.id, jobId);
+
+  if (status.state === "running") return { jobId };
+  if (status.state === "gone") {
+    // Only a restart loses a job before the hour is up. The week may or may
+    // not have landed, so send the coach to look rather than to write again.
     return {
-      ok:
-        `Wrote ${week.workouts.length} session(s) for ${athlete.name} on the ` +
-        `${TRACK_SPECS[trackRaw].label.toLowerCase()} track, ` +
-        `${PHASE_SPECS[phaseRaw].label.toLowerCase()}, starting ${start}.`,
-      summary: week.summary,
-    };
-  } catch (err) {
-    if (err instanceof NotConfiguredError) return { error: err.message };
-    // The API can be down, rate-limited or refuse; none of that should take
-    // the page with it, and the coach can still write the week by hand.
-    return {
-      error: err instanceof Error ? err.message : "The model could not be reached.",
+      error:
+        "Lost track of that week — the server restarted while writing it. " +
+        "Check the planner before writing it again.",
     };
   }
+  // Revalidated here rather than in the job: this is a request, and the job
+  // has none to revalidate against.
+  if (status.result.ok) {
+    revalidatePath("/week");
+    revalidatePath("/");
+  }
+  return status.result;
 }
 
 /** Write one workout by hand. */

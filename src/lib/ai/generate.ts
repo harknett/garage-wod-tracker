@@ -4,13 +4,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import type { User } from "@/lib/db/types";
+import type { Unit } from "@/lib/units";
 
 import { equipmentContext, trainingContext } from "./context";
 import { PHASE_SPECS } from "@/lib/workout/phases";
 import type { Phase } from "@/lib/workout/phases";
 import { TRACK_SPECS } from "@/lib/workout/tracks";
 import type { Track } from "@/lib/workout/tracks";
-import { GeneratedWeek } from "./schema";
+import { generatedWeek, type GeneratedWeek } from "./schema";
 
 /**
  * Writing a week of training.
@@ -65,8 +66,24 @@ Hold to these:
   does not cover, and never assume a rack, a rower or a pull-up bar is there
   because most gyms have one.
 
-Loads are in kilograms, as numbers. Write the description as you would say it
-to the athlete standing in front of you.`;
+Write the description as you would say it to the athlete standing in front of
+you.`;
+
+/**
+ * The athlete's unit, said plainly. Their history and the kit list already
+ * reach the model in it; this makes the prescription match, prose included —
+ * a pounds athlete reading "60 kg" in a description has to do sums under the
+ * bar, and a plate maths mistake there is a wrong lift.
+ */
+function unitBrief(name: string, unit: Unit): string {
+  return unit === "lb"
+    ? `${name} loads the bar in pounds (lb). Prescribe every load in pounds — the load ` +
+        "field, and every weight named in descriptions, notes and the summary. Pick loads " +
+        "that build from pound plates and dumbbells. Never write a weight in kilograms."
+    : `${name} loads the bar in kilograms (kg). Prescribe every load in kilograms — the ` +
+        "load field, and every weight named in descriptions, notes and the summary. Pick " +
+        "loads that build from kilo plates and dumbbells. Never write a weight in pounds.";
+}
 
 export interface GenerateOptions {
   /** The coach's brief: "four days, shoulder is cranky, no running". */
@@ -103,6 +120,9 @@ export async function generateWeek(options: GenerateOptions): Promise<GeneratedW
         content: [
           `Write ${options.days} day(s) of training for ${options.athlete.name}.`,
           "",
+          "--- units ---",
+          unitBrief(options.athlete.name, options.athlete.unit),
+          "",
           "--- track ---",
           // The track comes first: it decides the shape of the week, and the
           // phase and the coach's brief are both read inside that shape. A
@@ -130,7 +150,7 @@ export async function generateWeek(options: GenerateOptions): Promise<GeneratedW
         ].join("\n"),
       },
     ],
-    output_config: { format: zodOutputFormat(GeneratedWeek) },
+    output_config: { format: zodOutputFormat(generatedWeek(options.athlete.unit)) },
   });
 
   // parsed_output is null when the model returns something the schema rejects.

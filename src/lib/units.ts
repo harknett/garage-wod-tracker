@@ -42,6 +42,11 @@ export function parseLoad(input: string, unit: Unit): number {
   if (!Number.isFinite(value)) throw new UnitParseError(`Not a weight: ${input}`);
   if (value < 0) throw new UnitParseError("A load cannot be negative.");
 
+  return loadToGrams(value, unit);
+}
+
+/** A load already in hand as a number, in `unit`, into grams. */
+export function loadToGrams(value: number, unit: Unit): number {
   return Math.round(value * (unit === "kg" ? GRAMS_PER_KILO : GRAMS_PER_POUND));
 }
 

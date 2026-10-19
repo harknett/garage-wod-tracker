@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { Button, Card, Field, Notice, inputClass } from "@/components/ui";
 import type { Unit } from "@/lib/units";
@@ -10,7 +10,7 @@ import { TRACKS, TRACK_SPECS, trackLength } from "@/lib/workout/tracks";
 import type { Track } from "@/lib/workout/tracks";
 import type { Phase } from "@/lib/workout/phases";
 
-import { createManual, generate, type BuildState } from "./actions";
+import { buildStatus, createManual, generate, type BuildState } from "./actions";
 
 interface Athlete {
   id: number;
@@ -23,6 +23,53 @@ interface Athlete {
 
 /** Spare movement rows, so adding a movement needs no JavaScript round-trip. */
 const MOVEMENT_ROWS = 8;
+
+/** How often to ask whether the week is written yet. */
+const POLL_MS = 3000;
+
+/**
+ * Follow a week being written until it lands.
+ *
+ * `generate` answers at once with a job id; the week itself takes a minute or
+ * more. This asks `buildStatus` until the job finishes and returns what to
+ * show, plus whether it is still going. A failed poll is a network blip, not
+ * a failed week, so it just asks again.
+ */
+function useBuildJob(state: BuildState): { shown: BuildState; writing: boolean } {
+  // Tagged with the action state it answers, so a fresh submit never shows
+  // the last week's result.
+  const [finished, setFinished] = useState<{ for: BuildState; result: BuildState } | null>(null);
+
+  useEffect(() => {
+    const jobId = state.jobId;
+    if (!jobId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function poll() {
+      try {
+        const next = await buildStatus(jobId!);
+        if (cancelled) return;
+        if (!next.jobId) {
+          setFinished({ for: state, result: next });
+          return;
+        }
+      } catch {
+        // Ask again on the next tick.
+      }
+      if (!cancelled) timer = setTimeout(poll, POLL_MS);
+    }
+
+    timer = setTimeout(poll, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [state]);
+
+  if (finished?.for === state) return { shown: finished.result, writing: false };
+  return { shown: state, writing: Boolean(state.jobId) };
+}
 
 export function BuildForms(props: {
   athletes: Athlete[];
@@ -57,7 +104,9 @@ function AiForm({
   defaultAthleteId: number;
   aiReady: boolean;
 }) {
-  const [state, action, pending] = useActionState<BuildState, FormData>(generate, {});
+  const [submitted, action, submitting] = useActionState<BuildState, FormData>(generate, {});
+  const { shown: state, writing } = useBuildJob(submitted);
+  const pending = submitting || writing;
   // Tracked in state so changing the athlete moves the phase with them; the
   // coach can still override it for this one week.
   const [athleteId, setAthleteId] = useState(defaultAthleteId);

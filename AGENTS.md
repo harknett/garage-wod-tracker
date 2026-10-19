@@ -72,7 +72,8 @@ someone is reading them mid-session with chalk on their hands.
   nothing moves.
 - **Loads are whole grams, durations are seconds.** Kilograms and pounds are
   renderings. Convert at the boundary — form input and AI import — and nowhere
-  else.
+  else. The model prescribes in the athlete's own unit (`generatedWeek(unit)`),
+  prose included, and `importWeek` must be given that same unit to convert.
 - **A track decides the shape of the week.** `TRACK_SPECS[track].brief` goes
   to the model ahead of the phase, because a session written for 40 minutes is
   simply wrong in a 12-minute slot. `sessions` is the same number the planner
@@ -88,6 +89,11 @@ someone is reading them mid-session with chalk on their hands.
 - **`Store.transaction` is re-entrant via savepoints.** Methods that wrap their
   own writes nest legitimately (`importWeek` around `createWorkout`); plain
   `BEGIN` would throw. Keep new multi-write methods going through it.
+- **No request waits on the model.** Writing a week outlasts nginx's read
+  timeout, and a 504 took the Build page down while the week saved anyway. The
+  `generate` action starts a job (`src/lib/ai/jobs.ts`) and returns its id at
+  once; the form polls `buildStatus` until it lands. Keep any new model call on
+  the same path rather than awaiting it inside an action.
 - **The equipment list is a hard constraint on generation.** Only
   `availableEquipment()` reaches the prompt: listing a broken rower is the same
   as programming one.
